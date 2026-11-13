@@ -1,0 +1,138 @@
+# Drumtonic on the FM-1: each pattern's kit (2026-11-12). A pattern with steps and no kit takes the kit playing (here,
+# at power-on: the patterns saved before); one with no steps has none; a kit loaded on MIX is the pattern playing's. A
+# pattern that starts with another kit loads it (stopped: at once; playing: as it starts, the ISR before its first
+# hits), the edits of the one before kept; a tap on the kit playing (MIX) takes it back to its saved one; undo too.
+# "patkit P": its kit + 1; "kitdirty": some kit's edits * 2 + the one playing's; "param 0 1": BD's FREQ (CLASSIC 20,
+# TIGHT 24). buttons: 4 ENV (MIX) 6 EDIT 8 HOME 12 PLAY; white 1 = 0x1, 2 = 0x4, 3 = 0x10
+50 btn 8
+100 expect 1 patkit 0
+100 expect 1 patkit 1
+100 expect 0 patkit 2
+100 expect 0 kitcur
+100 expect 20 param 0 1
+# MIX, white 2: kit 2 (TIGHT), P1's now
+200 btn 4
+210 keys 0x4
+220 keys 0
+300 expect 1 kitcur
+300 expect 2 patkit 0
+300 expect 24 param 0 1
+# an edit: kit 2's
+400 btn 6
+410 enc 3 5
+500 expect 29 param 0 1
+500 expect 3 kitdirty
+# P2 (kit 1), stopped: kit 1 at once, kit 2's edit kept
+600 btn 8
+610 keys 0x4
+620 keys 0
+700 expect 1 pat
+700 expect 0 kitcur
+700 expect 2 kitdirty
+700 expect 20 param 0 1
+# P1 again: kit 2 with its edit
+800 keys 0x1
+810 keys 0
+900 expect 1 kitcur
+900 expect 29 param 0 1
+# MIX, white 2 (the kit playing): back to its saved one
+1000 btn 4
+1010 keys 0x4
+1020 keys 0
+1100 expect 24 param 0 1
+1100 expect 0 kitdirty
+# playing P1 (kit 2), P2 next: its kit as it starts (3300), taken by the ISR before its first hits
+1200 btn 8
+1300 btn 12
+1500 keys 0x4
+1510 keys 0
+1600 expect 1 next
+3290 expect 1 kitcur
+3290 expect 24 param 0 1
+3290 expect 0 kitswaps
+3302 expect 20 param 0 1
+3302 expect 1 kitswaps
+3320 expect 0 kitcur
+3320 expect 1 pat
+# stopped, MIX, white 3: kit 3 on P2; undo: kit 1 again, P2's again
+3500 btn 12
+3600 btn 4
+3610 keys 0x10
+3620 keys 0
+3700 expect 2 kitcur
+3700 expect 3 patkit 1
+3800 btndown 8
+3810 btn 0
+3820 btnup 8
+3900 expect 0 kitcur
+3900 expect 1 patkit 1
+3900 expect 20 param 0 1
+# an edit, SAVE: into kit 1's place (the tap on it after: the same)
+4000 btn 6
+4010 enc 3 5
+4100 expect 3 kitdirty
+4200 btn 9
+4400 expect 0 kitdirty
+4500 btn 4
+4510 keys 0x1
+4520 keys 0
+4600 expect 25 param 0 1
+# P1 (kit 2) playing, P2 (kit 1) next; an edit on kit 2 (FREQ 29), then P2 starts (kit 1, FREQ 25 as saved);
+# undo: kit 2's edit undone in its working copy, kit 1 still playing (until 2026-11-12 review: the undo did nothing)
+5000 btn 8
+5100 keys 0x1
+5110 keys 0
+5150 expect 1 kitcur
+5150 expect 24 param 0 1
+5200 btn 12
+5300 keys 0x4
+5310 keys 0
+5400 btn 6
+5410 enc 3 5
+5500 expect 29 param 0 1
+7300 expect 0 kitcur
+7300 expect 25 param 0 1
+7400 btndown 8
+7410 btn 0
+7420 btnup 8
+7500 expect 0 kitcur
+7500 expect 25 param 0 1
+7600 btn 12
+7700 btn 8
+7800 keys 0x1
+7810 keys 0
+7900 expect 1 kitcur
+7900 expect 24 param 0 1
+7900 expect 0 kitdirty
+# P1 (kit 2) playing, P2 (kit 1) next; MIX white 3 just after P2 starts (10004): kit 3 is P2's, P1 keeps kit 2, and
+# every kit keeps its own sound (the review: kit_cur behind the ISR's swap mixed them up)
+8000 btn 12
+8100 keys 0x4
+8110 keys 0
+8200 btn 4
+10004 keys 0x10
+10014 keys 0
+10100 expect 2 kitcur
+10100 expect 3 patkit 1
+10100 expect 2 patkit 0
+10100 expect 17 param 0 1
+10200 btn 12
+10300 btn 8
+10400 keys 0x1
+10410 keys 0
+10500 expect 1 kitcur
+10500 expect 24 param 0 1
+10600 btn 4
+10700 keys 0x1
+10710 keys 0
+10800 expect 0 kitcur
+10800 expect 25 param 0 1
+10900 keys 0x10
+10910 keys 0
+11000 expect 2 kitcur
+11000 expect 17 param 0 1
+11100 keys 0x4
+11110 keys 0
+11200 expect 1 kitcur
+11200 expect 24 param 0 1
+11300 end

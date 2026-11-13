@@ -1,0 +1,19 @@
+# Drumtonic on the FM-1: a long state-band message ("EMPTY KIT: GLO + KEY SAVES", 26 characters: a white key on MIX for
+# an empty kit) must not run over into the keys' table. Until 2026-11-10 say() copied it unbounded into msg[24], and
+# key_role[1] became 'S' (white 4): black 1 then held step 4 instead of picking BD.
+# white 4 = 0x40, black 1 = 0x2, black 2 = 0x8
+# (a first press only closes the opening)
+50 btn 8
+100 btn 6
+200 keys 0x8
+250 keys 0
+260 expect 1 ch
+300 btn 4
+400 keys 0x40
+450 keys 0
+500 btn 6
+600 keys 0x2
+650 keys 0
+660 expect 0 ch
+670 expect -1 held
+700 end

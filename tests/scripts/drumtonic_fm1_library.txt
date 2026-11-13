@@ -1,0 +1,51 @@
+# Drumtonic on the FM-1: the sound library (EDIT's last bank). A row is heard on the channel at once (preview) and
+# leaving the bank brings its own sound back; SEL loads it with its name; GLO + SEL on a factory row saves the channel's
+# sound into the first free user row, on a used one asks first; GLO + REC deletes a user row. "expect V NAME args".
+# buttons: 3 SEL 6 EDIT 7 GLO 13 REC; black 9 (RS) = 0x100000; row 39 = CG CONGA HI ('C' << 8 | 'G' = 17223, pitch 64);
+# 'R' << 8 | 'S' = 21075; ask 7 = A_LIB_SAVE
+50 btn 8
+100 btn 6
+110 btn 6
+120 btn 6
+130 btn 6
+140 btn 6
+150 btn 6
+160 btn 6
+170 btn 6
+200 keys 0x100000
+250 keys 0
+260 expect 8 ch
+300 enc 0 39
+310 expect 39 librow
+320 expect 8 preview
+330 expect 21075 name 8
+400 btn 6
+410 expect -1 preview
+500 btn 6
+510 btn 6
+520 btn 6
+530 btn 6
+540 btn 6
+550 btn 6
+560 btn 6
+600 btn 3
+610 expect 17223 name 8
+620 expect 64 param 8 1
+630 expect -1 preview
+700 btndown 7
+750 btn 3
+800 btnup 7
+1000 expect 1 libused 0
+1010 expect 59 librow
+1100 btndown 7
+1150 btn 3
+1200 btnup 7
+1210 expect 7 ask
+1300 btn 3
+1310 expect 0 ask
+1500 btndown 7
+1550 btn 13
+1600 btnup 7
+1800 expect 0 libused 0
+1900 shot
+2000 end

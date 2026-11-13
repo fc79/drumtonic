@@ -1,0 +1,29 @@
+# Drumtonic on the FM-1: the black keys mute a channel only on LIVE (HOME); on every other page (SETTINGS, LFO, FX as SEQ,
+# EDIT, ENV) they pick it. black 2 = 0x8, black 3 = 0x20 (a first press only closes the opening)
+50 btn 8
+100 btn 5
+110 expect 5 view
+200 keys 0x8
+250 keys 0
+260 expect 1 ch
+270 expect 0 mute
+300 btn 2
+310 expect 6 view
+400 keys 0x20
+450 keys 0
+460 expect 2 ch
+470 expect 0 mute
+500 btn 8
+510 btn 8
+520 expect 1 view
+600 keys 0x8
+650 keys 0
+660 expect 1 ch
+670 expect 0 mute
+700 btn 8
+710 expect 0 view
+800 keys 0x20
+850 keys 0
+860 expect 4 mute
+870 expect 1 ch
+900 end

@@ -1,0 +1,88 @@
+# Drumtonic on the FM-1: steps (tap, hold, black 11 accents), a step's condition (ALGORITHM with the step held: %,
+# FILL, NOT FILL, then the cycles anticlockwise; one place a read), PRESETS (longer copies, back gives the original), ALGORITHM (the channel, ALL), SEL = FILL, black 2 picks the channel on STEPS and mutes it on LIVE; playing, it records only with REC. "expect V NAME args".
+# white w: 0x1 0x4 0x10 0x40 0x80 0x200 0x800 0x1000 ...; black 11: 0x2000000. P_COND = 26
+# (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 expect 3 view
+300 keys 0x4
+350 keys 0
+360 expect 1 step 0 0 1
+400 keys 0x4
+450 keys 0
+460 expect 0 step 0 0 1
+500 keys 0x1
+900 keys 0
+910 expect 2 step 0 0 0
+1000 keys 0x2000000
+1050 keys 0x2000010
+1100 keys 0x2000000
+1150 keys 0
+1160 expect 2 step 0 0 2
+1200 keys 0x80
+1250 enc 1 1
+1260 enc 1 1
+1300 expect 90 lane 0 0 26 4
+1350 enc 1 -1
+1355 enc 1 -1
+1360 enc 1 -1
+1365 enc 1 -1
+1370 enc 1 -1
+1400 expect 101 lane 0 0 26 4
+1450 keys 0
+1460 expect 1 step 0 0 4
+1500 keys 0x80
+1520 enc 1 1
+1525 enc 1 1
+1600 expect 136 lane 0 0 26 4
+1650 keys 0
+1700 enc 6 1
+1710 expect 24 len 0
+1720 expect 2 step 0 0 16
+1730 expect 136 lane 0 0 26 20
+1800 enc 6 -1
+1810 expect 16 len 0
+1820 expect 0 step 0 0 16
+1830 expect -1 lane 0 0 26 20
+1840 expect 136 lane 0 0 26 4
+1900 enc 1 1
+1910 expect 2 step 0 0 1
+1920 expect 136 lane 0 0 26 5
+2000 enc 0 10
+2010 expect 10 ch
+2100 enc 1 -1
+2110 expect 2 step 0 1 3
+2120 expect 2 step 0 0 0
+2200 keys 0x40
+2250 keys 0
+2260 expect 0 step 0 0 3
+2300 enc 0 -10
+2310 expect 0 ch
+2400 btndown 3
+2410 expect 1 fill
+2500 btnup 3
+2510 expect 0 fill
+2600 keys 0x8
+2650 keys 0
+2660 expect 1 ch
+2670 expect 0 mute
+2700 btn 8
+2800 keys 0x8
+2850 keys 0
+2860 expect 1 ch
+2870 expect 2 mute
+2900 btn 11
+2910 expect 1 ch
+2920 expect 2 count 0 1
+2950 btn 12
+3200 keys 0x8
+3250 keys 0
+3260 expect 2 count 0 1
+3300 btn 13
+3500 keys 0x8
+3550 keys 0
+3560 expect 3 count 0 1
+3600 btn 13
+3650 btn 12
+3700 shot
+3800 end

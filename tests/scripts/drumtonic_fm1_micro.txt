@@ -1,0 +1,84 @@
+# Drumtonic on the FM-1: micro timing, as Elektron's (1/384 of a bar: 1/24 of a 16th). On SEQ, a step held + OCT+ / OCT-:
+# its hit 1/24 of a step later / earlier, up to 23/24 (a P_MICRO lane, motion.h); a press without a step held still turns
+# the steps' page. 120 BPM, 1/16: a step is 125 ms, a 24th 5.2 ms. BD (pattern 1: steps 1 5 11 13): step 1 twelve 24ths
+# late (62.5 ms); a new step 3 six early, then (forty OCT+, stopping at 23/24) 23 late (119.8 ms). PLAY at 3000: BD's
+# hits made at 3060 and 3367 (3062.5 and 3369.8 from PLAY: the host makes them a render at a time, 5.8 ms).
+# white w: 0x1 0x4 0x10 0x40 0x80 ...; OCT- btn 0, OCT+ btn 1 (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 keys 0x1
+250 btn 1
+270 btn 1
+290 btn 1
+310 btn 1
+330 btn 1
+350 btn 1
+370 btn 1
+390 btn 1
+410 btn 1
+430 btn 1
+450 btn 1
+470 btn 1
+490 keys 0
+510 expect 12 micro 0 0 0
+560 keys 0x10
+610 btn 0
+630 btn 0
+650 btn 0
+670 btn 0
+690 btn 0
+710 btn 0
+730 keys 0
+750 expect -6 micro 0 0 2
+760 expect 1 step 0 0 2
+810 keys 0x10
+860 btn 1
+880 btn 1
+900 btn 1
+920 btn 1
+940 btn 1
+960 btn 1
+980 btn 1
+1000 btn 1
+1020 btn 1
+1040 btn 1
+1060 btn 1
+1080 btn 1
+1100 btn 1
+1120 btn 1
+1140 btn 1
+1160 btn 1
+1180 btn 1
+1200 btn 1
+1220 btn 1
+1240 btn 1
+1260 btn 1
+1280 btn 1
+1300 btn 1
+1320 btn 1
+1340 btn 1
+1360 btn 1
+1380 btn 1
+1400 btn 1
+1420 btn 1
+1440 btn 1
+1460 btn 1
+1480 btn 1
+1500 btn 1
+1520 btn 1
+1540 btn 1
+1560 btn 1
+1580 btn 1
+1600 btn 1
+1620 btn 1
+1640 btn 1
+1660 keys 0
+1680 expect 23 micro 0 0 2
+3000 btn 12
+3040 expect 0 hitms 0
+3100 expect 3060 hitms 0
+3340 expect 3060 hitms 0
+3400 expect 3367 hitms 0
+4500 btn 12
+4510 expect 0 run
+4600 end

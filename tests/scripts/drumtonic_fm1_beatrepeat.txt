@@ -1,0 +1,107 @@
+# Drumtonic on the FM-1: beat repeat on HOME. A tap on ARP turns it on (ARP lit, the band REPEAT; on until the next tap
+# on HOME); on, whites 1-4 (1/4 1/8 1/16 1/32) repeat the sequencer's hits of the slice in progress (on the beat's grid
+# from PLAY) while held: the slice once as it is, then again and again; let go, the pattern is where it would have been.
+# A slice with no hit so far: the last hit's (an empty step: the one before), on the grid. Whites 5-16 do nothing. Off:
+# whites pick patterns. Stopped: nothing (PLAY FIRST). Leaving HOME ends a repeat, not the mode.
+# P1's BD (channel 0): steps 1, 5, 11, 13; 120 BPM, a step 125 ms; PLAY at 200: BD at 200, 700, 1450, 1700, then +2000.
+# br: the length + 1 (0 off), + 16 on in the ISR, + 32 looping, + 64 the mode on. White 1 = 0x1, white 3 = 0x10,
+# white 4 = 0x40, white 5 = 0x80.
+50 btn 8
+60 expect 0 br
+100 btn 10
+110 expect 64 br
+# stopped: nothing
+120 keys 0x1
+130 expect 64 br
+140 keys 0
+200 btn 12
+210 expect 1 chhits 0
+# 1/4 from 760: the slice 700..1200 (BD at 700), then again: BD at 1200, 1700, 2200 (not the pattern's 1450)
+760 keys 0x1
+770 expect 81 br
+1190 expect 2 chhits 0
+1210 expect 3 chhits 0
+1300 expect 113 br
+1460 expect 3 chhits 0
+1710 expect 4 chhits 0
+2210 expect 5 chhits 0
+2350 keys 0
+2370 expect 64 br
+# let go: the pattern where it would have been (BD at 2700, 3450)
+2690 expect 5 chhits 0
+2710 expect 6 chhits 0
+3450 expect 7 chhits 0
+# 1/16 from 3465 (white 3): the slice 3450..3575 (BD at 3450) every 125 ms: 3575, 3700, 3825, 3950
+3465 keys 0x10
+3570 expect 7 chhits 0
+3585 expect 8 chhits 0
+3710 expect 9 chhits 0
+3835 expect 10 chhits 0
+3960 expect 11 chhits 0
+3990 keys 0
+4190 expect 11 chhits 0
+4210 expect 12 chhits 0
+# 1/16 on an empty step (4325..4450, at 4340): the 16th before (BD at 4200), from its next time on the grid: 4450, 4575
+# (until 2026-11-11: silence)
+4340 keys 0x10
+4350 expect 12 chhits 0
+4440 expect 12 chhits 0
+4460 expect 13 chhits 0
+4585 expect 14 chhits 0
+4600 keys 0
+# white 5: nothing (not a pattern either)
+4650 keys 0x80
+4660 expect 64 br
+4670 keys 0
+# 1/32 70 ms into a 16th (its second 32nd, no hit): the 16th's first 32nd (BD at 6700) on the grid every 62.5 ms:
+# ~6825, 6887, 6950
+6770 keys 0x40
+6780 expect 116 br
+6815 expect 19 chhits 0
+6835 expect 20 chhits 0
+6880 expect 20 chhits 0
+6895 expect 21 chhits 0
+6940 expect 21 chhits 0
+6955 expect 22 chhits 0
+7000 keys 0
+7090 expect 22 chhits 0
+# leaving HOME: the repeat ends, the mode stays (back on HOME: whites repeat)
+7100 keys 0x1
+7110 expect 81 br
+7200 btn 11
+7210 expect 64 br
+7220 keys 0
+7300 btn 8
+7400 keys 0x1
+7410 expect 81 br
+7420 keys 0
+# two whites: white 1 then white 3 held (1/16), white 3 let go: white 1's again (1/4)
+7430 keys 0x1
+7440 keys 0x11
+7450 expect 115 br
+7460 keys 0x1
+7470 expect 81 br
+7480 keys 0
+7490 expect 64 br
+# a tap on ARP: off; whites pick patterns again
+7500 btn 10
+7510 expect 0 br
+# ARP held + a white: nothing (no pattern, and ARP let go does not turn the mode on); ARP held + a knob: the knob, then
+# ARP let go: nothing either
+7600 btndown 10
+7620 keys 0x10
+7630 keys 0
+7650 btnup 10
+7660 expect 0 next
+7670 expect 0 br
+7700 btndown 10
+7720 enc 2 1
+7750 btnup 10
+7760 expect 0 br
+# REC on HOME: whites still pick patterns (not the channels)
+7800 btn 13
+7810 expect 1 rec
+7820 keys 0x10
+7830 keys 0
+7840 expect 2 next
+7900 end

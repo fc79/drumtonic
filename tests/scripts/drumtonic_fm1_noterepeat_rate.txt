@@ -1,0 +1,73 @@
+# Drumtonic on the FM-1: note repeat's rate on knob 3 of SEQ (REPEAT, there even with note repeat off: 1/4 1/4T 1/8
+# 1/8T 1/16 1/16T 1/32 1/32T), 1/8T, 1/4, 1/4T and 1/8 (until
+# 2026-11-11 the grid's slot at 1/8 never changed: only the first hit); the hits counted from the key. 120 BPM: 1/8 = 250 ms.
+# black 6 (LT, no notes in P1) = 0x2000 (a first press only closes the opening); knob 3 = encoder 4
+50 btn 8
+100 btn 11
+110 expect 0 nr
+140 enc 4 1
+150 enc 4 1
+160 expect 2 nr
+200 btn 10
+210 expect 18 nr
+# stopped, 1/8: LT held 300..1100: hits every 250 ms from the key, ~300 .. ~1050
+300 keys 0x2000
+310 expect 1 chhits 5
+1100 keys 0
+1110 expect 4 chhits 5
+# playing, 1/8: LT held 1500..2300 (PLAY at 1300): ~1500, ~1750, ~2000, ~2250: counted from the key, not the
+# sequencer's grid (until 2026-11-11 the second hit came 125 to 250 ms after the first)
+1300 btn 12
+1500 keys 0x2000
+1510 expect 5 chhits 5
+1740 expect 5 chhits 5
+1760 expect 6 chhits 5
+1990 expect 6 chhits 5
+2010 expect 7 chhits 5
+2240 expect 7 chhits 5
+2260 expect 8 chhits 5
+2300 keys 0
+2310 expect 8 chhits 5
+2400 enc 4 1
+2410 expect 19 nr
+2500 enc 4 1
+2510 expect 20 nr
+# stopped, 1/8T (166.7 ms): LT held 2700..3400: ~2700, ~2867, ~3033, ~3200, ~3367
+2550 btn 12
+2560 enc 4 -1
+2570 expect 19 nr
+2700 keys 0x2000
+2710 expect 9 chhits 5
+2855 expect 9 chhits 5
+2880 expect 10 chhits 5
+3020 expect 10 chhits 5
+3045 expect 11 chhits 5
+3190 expect 11 chhits 5
+3210 expect 12 chhits 5
+3355 expect 12 chhits 5
+3380 expect 13 chhits 5
+3400 keys 0
+# stopped, 1/4 (500 ms): LT held 3600..4650: ~3600, ~4100, ~4600
+3450 enc 4 -1
+3460 enc 4 -1
+3470 enc 4 -1
+3480 expect 16 nr
+3600 keys 0x2000
+3610 expect 14 chhits 5
+4090 expect 14 chhits 5
+4110 expect 15 chhits 5
+4590 expect 15 chhits 5
+4615 expect 16 chhits 5
+4650 keys 0
+# stopped, 1/4T (333 ms): LT held 4800..5780: ~4800, ~5133, ~5467
+4700 enc 4 1
+4710 expect 17 nr
+4800 keys 0x2000
+4810 expect 17 chhits 5
+5125 expect 17 chhits 5
+5145 expect 18 chhits 5
+5455 expect 18 chhits 5
+5480 expect 19 chhits 5
+5700 expect 19 chhits 5
+5780 keys 0
+5900 end

@@ -1,0 +1,32 @@
+# Drumtonic on the host: play pattern A, edit a sound and the steps, the PLAY mode pads, another kit, tempo, save
+200 shot
+300 btn 16
+1300 shot
+1500 enc 1 6
+1600 shot
+1800 btn 0
+1900 shot
+2000 btn 3
+2100 pad 1 100
+2150 pad 1 0
+2200 pad 9 100
+2250 pad 9 0
+2300 pad 9 100
+2350 pad 9 0
+2400 shot
+2600 btn 15
+2700 pad 8 120
+2750 pad 8 0
+2800 pad 1 100
+2850 pad 1 0
+2900 shot
+4300 shot
+4500 btn 12
+4600 shot
+5000 fader 0 80
+5100 shot
+6000 btn 16
+6200 btn 11
+6300 shot
+6600 btn 17
+7000 end

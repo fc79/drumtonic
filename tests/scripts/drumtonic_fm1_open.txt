@@ -1,0 +1,12 @@
+# Drumtonic on the FM-1: the opening stays until a key or a button (no time limit); that press only closes it.
+# "expect V NAME args". Buttons: 11 SEQ 12 PLAY. White key 2 = 0x4 (on LIVE: pattern 2).
+5000 expect 1 open
+5100 btn 12
+5110 expect 0 open
+5120 expect 0 run
+5200 btn 12
+5210 expect 1 run
+5300 btn 12
+5310 expect 0 run
+5400 shot
+5500 end

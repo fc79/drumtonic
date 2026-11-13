@@ -1,0 +1,32 @@
+--- a/scsiio/__init__.py	2025-03-16 20:41:50
++++ b/scsiio/__init__.py	2026-10-27 23:49:50
+@@ -6,5 +6,8 @@
+ elif sys.platform == 'linux':
+     from scsiio.linuxport import SCSIDev
+ 
++elif sys.platform == 'darwin':
++    from scsiio.macport import SCSIDev
++
+ else:
+     raise ImportError("Platform '%s' is not supported (yet)" % sys.platform)
+--- a/jluboottool.py	2025-03-16 20:41:50
++++ b/jluboottool.py	2026-10-28 00:09:34
+@@ -651,6 +651,18 @@
+     vendor, product, prodrev = dev.inquiry()
+ 
+     chipname = vendor.lower()
++
++    # with --device the chip is not searched for: --chip then names the chip (and its loader),
++    # e.g. wl82 for the SMK-37 (AC791N: "WL82" by INQUIRY, "WL80" in its USB strings)
++    if args.device is not None and args.chip is not None:
++        forced = get_chip_name(args.chip)
++        if forced is None:
++            print(f'Unknown chip "{args.chip}"')
++            exit(1)
++        if forced != chipname:
++            print(f'Inquiry says "{chipname}", using "{forced}" as given with --chip')
++            chipname = forced
++
+     if chipname not in JL_chips:
+         print(f'"{chipname}" is not supported or it is not a JieLi chip.')
+         exit(2)

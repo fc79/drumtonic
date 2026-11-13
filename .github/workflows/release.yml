@@ -1,0 +1,115 @@
+# Dinghy: build the packages on GitHub, run the host tests, and on a tag vX.Y publish the release with a build
+# attestation (actions/attest-build-provenance): the Firmware Hub shows "Built from source" for exactly these files.
+# The JieLi toolchain comes from pkgman.jieliapp.com (tools/get_toolchain.sh), the AC79 SDK from gitee.com, as in
+# sloopDX's and OberVave's workflows. Run by hand (workflow_dispatch) for a test build without a release.
+# On a tag the FM-1 release also becomes the browser installer: a file of the release, and GitHub Pages (public
+# repository only).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # the release on a tag
+      id-token: write          # the attestation's signing identity
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Python packages
+        run: python3 -m pip install Pillow
+
+      - name: JieLi toolchain (pkgman.jieliapp.com)
+        run: sh tools/get_toolchain.sh
+
+      - name: JieLi AC79 SDK (three files of it are placed in the package)
+        run: |
+          for i in 1 2 3; do                     # (gitee.com drops a clone now and then: try again)
+            git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+                https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK && break
+            rm -rf ~/fw-AC79_AIoT_SDK
+            sleep 20
+          done
+          test -d ~/fw-AC79_AIoT_SDK
+
+      - name: Build (the SMK-37 first, the FM-1 last, as the tests expect)
+        run: |
+          BOARD=smk37 sh build.sh
+          BOARD=smk37 MODEL=elite sh build.sh
+          BOARD=smk37 MODEL=mke sh build.sh
+          sh build.sh
+
+      - name: Host tests
+        run: sh tests/run_tests.sh
+
+      # A release carries the FM-1 package only (the SMK-37 builds above are for the tests)
+      - name: Release packages (tags only)
+        if: github.ref_type == 'tag'
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          sh build.sh --release "$V"
+          ls -l build/drumtonic-"$V"*.fwsc
+          (cd build && sha256sum drumtonic-"$V"*.fwsc > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drumtonic-fwsc
+          path: |
+            build/drumtonic.fwsc
+            build/drumtonic-[0-9]*.fwsc
+          if-no-files-found: error
+
+      - name: Attest the packages (tags only)
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: build/drumtonic-[0-9]*.fwsc
+
+      # The browser installer of the FM-1 release: a file of the release and, as index.html, the GitHub Pages site. A
+      # page needs a public repository (or a paid plan): a private one builds it but does not publish it.
+      - name: Installer (tags only)
+        if: github.ref_type == 'tag'
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          python3 tools/make_installer.py build/drumtonic-"$V".fwsc -o build/drumtonic-"$V"-installer.html
+          mkdir -p site
+          cp build/drumtonic-"$V"-installer.html site/index.html
+
+      # (files: the release build, not the dev one; no comments inside the list: they would be part of a pattern)
+      - name: Release (tags only)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/drumtonic-[0-9]*.fwsc
+            build/drumtonic-[0-9]*-installer.html
+            build/SHA256SUMS
+          generate_release_notes: true
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref_type == 'tag' && !github.event.repository.private
+        with:
+          path: site
+
+  pages:
+    needs: firmware
+    if: github.ref_type == 'tag' && !github.event.repository.private
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

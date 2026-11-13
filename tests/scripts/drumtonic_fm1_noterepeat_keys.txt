@@ -1,0 +1,34 @@
+# Drumtonic on the FM-1: with note repeat on (SEQ), every black key repeats its channel: HOME + a black key is not solo,
+# GLO + a black key not a paste (and letting HOME or GLO go then does nothing else); a key already held when ARP turns
+# it on plays at once. 1/4 at 120 BPM: a hit every 500 ms. black 2 (SD) = 0x8, black 3 (CP) = 0x20.
+# (a first press only closes the opening; GLO = 7, HOME = 8, ARP = 10, SEQ = 11)
+50 btn 8
+100 btn 11
+150 btn 10
+160 expect 16 nr
+# HOME + SD: SD repeats, no solo; HOME let go: still on SEQ
+200 btndown 8
+250 keys 0x8
+260 expect 1 chhits 1
+270 expect 0 solo
+300 keys 0
+350 btnup 8
+360 expect 3 view
+# GLO + CP: CP repeats, nothing pasted; GLO let go: still on SEQ
+400 btndown 7
+450 keys 0x20
+460 expect 1 chhits 2
+500 keys 0
+550 btnup 7
+560 expect 3 view
+# off; CP held (stopped: it plays, by hand: not in chhits), then ARP: on, CP at once, then 500 ms on
+600 btn 10
+610 expect 0 nr
+700 keys 0x20
+710 expect 1 chhits 2
+800 btn 10
+810 expect 2 chhits 2
+1290 expect 2 chhits 2
+1320 expect 3 chhits 2
+1350 keys 0
+1400 end

@@ -1,0 +1,20 @@
+# Drumtonic on the FM-1: micro timing on knob 2 (MICRO) with a step held on SEQ, 1/24 of a step a click: +5, -3 (2),
+# -5 stops at 0 on its way across (as the master's FILTER), -2 within 0.35 s stays there, after a pause -2, then -30
+# stops at -23. (enc 3 = knob 2; a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 keys 0x1
+300 enc 3 5
+350 expect 5 micro 0 0 0
+400 enc 3 -3
+450 expect 2 micro 0 0 0
+500 enc 3 -5
+550 expect 0 micro 0 0 0
+600 enc 3 -2
+650 expect 0 micro 0 0 0
+1000 enc 3 -2
+1050 expect -2 micro 0 0 0
+1060 enc 3 -30
+1080 expect -23 micro 0 0 0
+1200 keys 0
+1300 end

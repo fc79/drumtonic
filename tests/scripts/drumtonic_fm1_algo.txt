@@ -1,0 +1,17 @@
+# Drumtonic on the FM-1: ALGORITHM moves the channel's steps on SEQ only; on HOME it leaves them. "expect V NAME args".
+# buttons: 8 HOME 11 SEQ; encoder 1 ALGORITHM; white 2 = 0x4 (step 2, empty; step 1 has an accent, which moves to step 2 with it)
+50 btn 8
+100 btn 11
+200 keys 0x4
+250 keys 0
+260 expect 1 step 0 0 1
+300 btn 8
+310 expect 0 view
+400 enc 1 1
+410 expect 1 step 0 0 1
+420 expect 0 step 0 0 2
+500 btn 11
+600 enc 1 1
+610 expect 2 step 0 0 1
+620 expect 1 step 0 0 2
+700 end

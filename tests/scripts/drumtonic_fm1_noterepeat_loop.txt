@@ -1,0 +1,19 @@
+# Drumtonic on the FM-1: note repeat + REC on a part that loops each repeat: CP's part 4 steps long (1/16 at 120 BPM:
+# 500 ms), note repeat at 1/4 (500 ms). CP held from step 3 for four times round: each hit on the part's step 3, a
+# time round each, so one hit there, not a ratchet 4 (until 2026-11-12 each time round raised the ratchet).
+# black 3 (CP) = 0x20 (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 keys 0x20
+210 keys 0
+300 enc 6 -5
+310 expect 4 tlen 0 2
+400 btn 10
+410 expect 16 nr
+500 btn 13
+1000 btn 12
+1250 keys 0x20
+3100 keys 0
+3200 expect 1 step 0 2 2
+3210 expect 1 ratch 0 2 2
+3300 end

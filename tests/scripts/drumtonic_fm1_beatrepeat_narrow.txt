@@ -1,0 +1,39 @@
+# Drumtonic on the FM-1: beat repeat, another white while it loops: the new length takes a piece of the loop being
+# heard, not of the pattern going on unheard (until 2026-11-12 it jumped to the pattern's piece); shorter: the loop's start;
+# on the grid.
+# P1 at 120 BPM (a step 125 ms), PLAY at 200. White 1 held at 760: the quarter 700..1200 loops from 1200: BD (0), SD
+# (1) and CH (3) on its first 16th, CH on its third. The pattern, unheard: BD, SD and CH at 1450.
+# white 1 = 0x1, white 3 = 0x10
+50 btn 8
+180 btn 10
+190 expect 64 br
+200 btn 12
+760 keys 0x1
+1300 expect 113 br
+1300 expect 3 chhits 0
+1300 expect 2 chhits 1
+# white 3 too at 1460, in the loop's third 16th (its CH): the loop's first 16th, from the grid's next: BD, SD and CH
+# at 1575, 1700, 1825 (SD: not in the pattern's 16th at 1450, where it jumped until 2026-11-12)
+1460 keys 0x11
+1470 expect 115 br
+1570 expect 6 chhits 3
+1580 expect 7 chhits 3
+1840 expect 9 chhits 3
+1840 expect 6 chhits 0
+1840 expect 5 chhits 1
+# white 3 let go at 1900 (white 1 held): the quarter again, on the grid (its round 1700..2200): its CH at 1950, all
+# three at 2200
+1900 keys 0x1
+1910 expect 113 br
+1940 expect 9 chhits 3
+1960 expect 10 chhits 3
+2190 expect 6 chhits 0
+2210 expect 7 chhits 0
+# white 3 again at 2340, in the quarter's second 16th: its first 16th again: all three at 2450, 2575
+2340 keys 0x11
+2440 expect 7 chhits 0
+2460 expect 8 chhits 0
+2590 expect 9 chhits 0
+2600 keys 0
+2610 expect 64 br
+2700 end

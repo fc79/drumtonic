@@ -1,0 +1,29 @@
+# Drumtonic on the FM-1: on FX's COMP page ALGORITHM is MIX (fx 20, default 127). On EDIT and FX, OCT- / OCT+ are the bank before / after (wrapping); on SEQ, the steps' page.
+# buttons: 0 OCT- 1 OCT+ 2 FX 6 EDIT 11 SEQ. "expect V NAME args". 8 banks on SOUND (the last: the library)
+50 btn 8
+100 btn 6
+110 expect 4 view
+120 expect 0 bank
+200 btn 1
+210 expect 1 bank
+300 btn 0
+310 btn 0
+320 expect 7 bank
+400 btn 1
+410 expect 0 bank
+500 btn 6
+510 expect 1 bank
+600 btn 2
+610 expect 6 view
+620 expect 0 bank
+700 btn 0
+710 expect 4 bank
+800 btn 1
+810 btn 1
+820 expect 1 bank
+900 btn 0
+910 btn 0
+920 expect 4 bank
+1000 enc 1 -10
+1010 expect 107 fx 20
+1100 end

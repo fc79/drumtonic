@@ -1,0 +1,18 @@
+# Drumtonic on the FM-1: PRESETS (enc 6) on SEQ moves the chosen part's length only, elsewhere nothing. Longer copies
+# the part, back to the start restores it. Playing, a 5-step part loops on its own against a 16-step one.
+50 btn 8
+100 btn 11
+110 expect 3 view
+200 enc 6 -4
+210 expect 5 tlen 0 0
+220 expect 16 tlen 0 1
+230 expect 16 len 0
+300 btn 6
+310 enc 6 1
+320 expect 5 tlen 0 0
+400 btn 11
+1000 btn 12
+3560 expect 4 playstep
+3560 expect 0 pos 0
+3560 expect 4 pos 1
+4000 end

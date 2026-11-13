@@ -1,0 +1,14 @@
+# Drumtonic on the FM-1: playing on EDIT, the black key of the track chosen (BD, with notes) stays lit and goes dim for
+# 80 ms as the track plays (BD's hits here at ~420 and ~920 ms). blackled: 2 lit, 1 dim, 0 off.
+# black 1 = 0x2 (a first press only closes the opening)
+50 btn 8
+100 btn 6
+200 keys 0x2
+250 keys 0
+260 expect 0 ch
+400 btn 12
+440 expect 1 blackled 0
+600 expect 2 blackled 0
+940 expect 1 blackled 0
+1100 expect 2 blackled 0
+1200 end

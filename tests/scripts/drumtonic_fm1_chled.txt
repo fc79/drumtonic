@@ -1,0 +1,28 @@
+# Drumtonic on the FM-1: the black key of the track chosen. Stopped it blinks, on every page. Playing, on the pages its
+# key chooses (SEQ, EDIT, ENV), it stays lit and goes off for 80 ms as the track plays; elsewhere (LIVE) it is as the
+# others: dim, bright as it plays. blackled: 2 lit, 1 dim, 0 off.
+# black 10 = 0x400000 (track 10: no notes in the first pattern)
+# (a first press only closes the opening)
+50 btn 8
+100 btn 6
+200 keys 0x400000
+250 keys 0
+260 expect 9 ch
+300 expect 1 blackled 1
+400 btn 12
+500 expect 2 blackled 9
+520 expect 1 blackled 1
+600 btn 11
+700 expect 2 blackled 9
+800 btn 4
+900 expect 2 blackled 9
+1000 btn 8
+1100 expect 0 view
+1200 expect 1 blackled 9
+1300 btn 12
+1400 btn 6
+1450 btn 2
+1500 expect 2 blackled 9
+1510 expect 1 blackled 1
+1550 expect 1 blackled 9
+1700 end

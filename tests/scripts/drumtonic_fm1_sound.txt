@@ -1,0 +1,17 @@
+# Drumtonic on the FM-1: a sound copied onto another channel takes its name too (LT on CY: two LTs). "expect V NAME args".
+# buttons: 6 EDIT 7 GLO; black 6 (LT) = 0x2000, black 10 (CY) = 0x400000; name: the 2 first letters, 'L' << 8 | 'T' = 19540
+50 btn 8
+100 btn 6
+200 keys 0x2000
+250 keys 0
+260 expect 5 ch
+270 expect 17241 name 9
+300 btndown 7
+700 keys 0x400000
+750 keys 0
+800 btnup 7
+810 expect 19540 name 9
+820 expect 19540 name 5
+830 expect 35 param 9 1
+900 shot
+1000 end

@@ -1,0 +1,43 @@
+# Drumtonic on the FM-1: a button held alone shows its guide after 250 ms (not SEL, PLAY, REC), and letting it go then does
+# nothing else (SEQ held: the page stays); GLO or HOME held alone shows its guide (GLO's says what it copied); a gesture
+# with them shows the big bubble for 1 s instead (HOME + a white key: PATTERN / P2), and the guide comes back while
+# still held; a quick tap shows nothing. HOME held alone, then let go: the page stays (a tap: LIVE / SETTINGS). "guide": 7 GLO, 8 HOME, -1 none. "big": 1 shown.
+# (a first press only closes the opening)
+50 btn 8
+100 btn 11
+300 btndown 7
+400 expect -1 guide
+700 expect 7 guide
+800 btnup 7
+810 expect -1 guide
+1200 btndown 8
+1600 expect 8 guide
+1700 keys 0x4
+1710 expect -1 guide
+1720 expect 1 big
+1720 expect 1 pat
+1750 keys 0
+1800 expect -1 guide
+2800 expect 0 big
+2810 expect 8 guide
+2900 btnup 8
+2910 expect -1 guide
+3000 btn 7
+3100 expect -1 guide
+3110 expect 0 big
+3200 btn 11
+3210 expect 3 view
+3300 btndown 8
+3700 expect 8 guide
+3800 btnup 8
+3810 expect 3 view
+3900 btn 8
+3910 expect 0 view
+4100 btndown 11
+4500 expect 11 guide
+4600 btnup 11
+4610 expect 0 view
+4700 btndown 3
+5100 expect -1 guide
+5200 btnup 3
+5300 end

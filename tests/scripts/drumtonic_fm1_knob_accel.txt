@@ -1,0 +1,88 @@
+# Drumtonic on the FM-1: the 4 knobs' acceleration (2026-11-12): one click, one step when turned slowly; spun, up
+# to x8 (a quick turn crosses 0..127 in about one turn), the speed from the clicks over the time since the last ones
+# (a long main loop no longer hides it). TEMPO always a BPM a click. EDIT's OSC: knob 2 FREQ (BD: param 0 1); HOME:
+# knob 1 TEMPO (enc 2), knob 4 FILTER. buttons: 6 EDIT 8 HOME
+50 btn 8
+100 btn 6
+200 expect 20 param 0 1
+300 enc 3 -1
+500 enc 3 -1
+700 enc 3 -1
+900 enc 3 -1
+1100 enc 3 -1
+1300 enc 3 -1
+1500 enc 3 -1
+1700 enc 3 -1
+1900 enc 3 -1
+2100 enc 3 -1
+# 10 clicks down at 5 a second: one step each (20 -> 10)
+2300 expect 10 param 0 1
+2600 enc 3 1
+2620 enc 3 1
+2640 enc 3 1
+2660 enc 3 1
+2680 enc 3 1
+2700 enc 3 1
+2720 enc 3 1
+2740 enc 3 1
+2760 enc 3 1
+2780 enc 3 1
+2800 enc 3 1
+2820 enc 3 1
+2840 enc 3 1
+2860 enc 3 1
+2880 enc 3 1
+2900 enc 3 1
+2920 enc 3 1
+2940 enc 3 1
+2960 enc 3 1
+2980 enc 3 1
+3000 enc 3 1
+3020 enc 3 1
+3040 enc 3 1
+3060 enc 3 1
+# 24 clicks up at 50 a second: about one turn crosses the range (10 -> 127)
+3080 expect 127 param 0 1
+3380 enc 3 -2
+3440 enc 3 -2
+3500 enc 3 -2
+3560 enc 3 -2
+3620 enc 3 -2
+3680 enc 3 -2
+3740 enc 3 -2
+3800 enc 3 -2
+3860 enc 3 -2
+3920 enc 3 -2
+3980 enc 3 -2
+4040 enc 3 -2
+# 2 clicks every 60 ms, a slow main loop: still faster (127 -> 11; until 2026-11-12 on the unit, none)
+4100 expect 11 param 0 1
+4400 btn 8
+4500 expect 120 bpm
+4600 enc 2 1
+4620 enc 2 1
+4640 enc 2 1
+4660 enc 2 1
+4680 enc 2 1
+4700 enc 2 1
+4720 enc 2 1
+4740 enc 2 1
+4760 enc 2 1
+4780 enc 2 1
+4800 enc 2 1
+4820 enc 2 1
+4840 enc 2 1
+4860 enc 2 1
+4880 enc 2 1
+4900 enc 2 1
+4920 enc 2 1
+4940 enc 2 1
+4960 enc 2 1
+4980 enc 2 1
+5000 enc 2 1
+5020 enc 2 1
+5040 enc 2 1
+5060 enc 2 1
+# TEMPO: 24 quick clicks, 24 BPM
+5080 expect 144 bpm
+5180 end

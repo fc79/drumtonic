@@ -1,0 +1,59 @@
+# Drumtonic on the FM-1: a ratchet goes first. BD (P1: steps 1, 5, 11, 13), 120 BPM, a step 125 ms, PLAY at 1000.
+# Step 3 (made by the key) +12/24 late with ratchet 4: hits at ~1312, 1344, 1375, 1406, the last two in step 4; step 4
+# (made) is on: its own hit (~1375) does not cut the ratchet, it is not played. Step 7 (made) ratchet 3: ~1750, 1792,
+# 1833; step 8 (made) 10/24 early (~1823): not played either, the ratchet's third hit is.
+# white 3 = 0x10, white 4 = 0x40, white 7 = 0x800, white 8 = 0x1000 (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 keys 0x10
+210 btn 1
+220 btn 1
+230 btn 1
+240 btn 1
+250 btn 1
+260 btn 1
+270 btn 1
+280 btn 1
+290 btn 1
+300 btn 1
+310 btn 1
+320 btn 1
+400 btn 10
+410 btn 10
+420 btn 10
+430 expect 4 ratch 0 0 2
+500 keys 0
+550 keys 0x40
+560 keys 0
+600 keys 0x800
+610 btn 10
+620 btn 10
+630 expect 3 ratch 0 0 6
+700 keys 0
+750 keys 0x1000
+760 btn 0
+770 btn 0
+780 btn 0
+790 btn 0
+800 btn 0
+810 btn 0
+820 btn 0
+830 btn 0
+840 btn 0
+850 btn 0
+900 keys 0
+910 expect 1 step 0 0 7
+1000 btn 12
+1300 expect 1 chhits 0
+1320 expect 2 chhits 0
+1350 expect 3 chhits 0
+1380 expect 4 chhits 0
+1415 expect 5 chhits 0
+1480 expect 5 chhits 0
+1510 expect 6 chhits 0
+1760 expect 7 chhits 0
+1800 expect 8 chhits 0
+1828 expect 8 chhits 0
+1840 expect 9 chhits 0
+1900 expect 9 chhits 0
+2000 end

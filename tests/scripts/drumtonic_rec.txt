@@ -1,0 +1,13 @@
+# Drumtonic: live recording (PLAY mode, REC) onto the nearest step, then an external MIDI clock
+200 btn 16
+300 btn 15
+400 btn 17
+1180 pad 13 110
+1230 pad 13 0
+3500 shot
+3600 btn 16
+3700 btn 10
+4000 midi 0xFA 0 0
+4000 clock 120 48
+5000 shot
+5600 end

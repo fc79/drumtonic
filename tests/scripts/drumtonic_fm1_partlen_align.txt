@@ -1,0 +1,27 @@
+# Drumtonic on the FM-1: a part's length changed by PRESETS puts it back in step with the pattern. BD (P1: steps 1, 5,
+# 11, 13) with a ratchet 3 on step 3; playing, PRESETS shortens BD to 12, then back to 16: it must play on the
+# pattern's steps again (until 2026-11-11 it went on 4 steps behind). PLAY at 1000, 120 BPM: the pattern from 3000:
+# step 1 at ~3000, step 3's hits at ~3250 ~3292 ~3333, step 5 at ~3500, step 11 at ~4250.
+# white 3 = 0x10 (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 keys 0x10
+300 btn 10
+310 btn 10
+400 keys 0
+410 expect 3 ratch 0 0 2
+1000 btn 12
+1700 enc 6 -1
+1720 expect 12 tlen 0 0
+2600 enc 6 1
+2620 expect 16 tlen 0 0
+2990 expect 7 chhits 0
+3010 expect 8 chhits 0
+3240 expect 8 chhits 0
+3270 expect 9 chhits 0
+3310 expect 10 chhits 0
+3350 expect 11 chhits 0
+3520 expect 12 chhits 0
+4240 expect 12 chhits 0
+4270 expect 13 chhits 0
+4400 end

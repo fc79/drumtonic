@@ -1,0 +1,21 @@
+# SMK-37 diagnostics: each kind of control once, a screen after each
+200 shot
+300 vel 90
+400 keys 0x80
+500 shot
+600 keys 0
+700 btn 15
+800 shot
+900 enc 3 2
+1000 shot
+1100 pad 4 110
+1200 shot
+1300 pad 4 0
+1400 fader 2 64
+1500 shot
+1600 wheel 1 900
+1700 shot
+1800 xkey 36 70
+1900 shot
+2000 xkey 36 0
+2500 end

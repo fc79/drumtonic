@@ -1,0 +1,81 @@
+# Drumtonic on the FM-1: GLO copy / paste / clear (with the question), SAVE and HOME + REC, a chain, the kits on MIX,
+# on MIX a black key picks the channel (no mute), on LIVE it mutes; HOME + black = solo, a guide leaves the page as it was.
+# (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 btn 8
+210 expect 0 view
+300 btndown 7
+600 keys 0x10
+650 keys 0
+700 btnup 7
+710 expect 2 step 2 0 0
+720 expect 16 len 2
+800 btndown 7
+1100 keys 0x4
+1150 keys 0
+1200 btnup 7
+1210 expect 1 ask
+1300 btn 3
+1310 expect 0 ask
+1320 expect 0 step 1 1 7
+1400 keys 0x10
+1450 keys 0
+1460 expect 2 pat
+1500 btndown 7
+1550 btn 13
+1600 btnup 7
+1610 expect 3 ask
+1700 btn 8
+1710 expect 0 ask
+1720 expect 2 step 2 0 0
+1800 btndown 7
+1850 btn 13
+1900 btnup 7
+2000 btn 3
+2010 expect 0 step 2 0 0
+2100 btn 9
+2300 btn 11
+2400 keys 0x1
+2450 keys 0
+2460 expect 1 step 2 0 0
+2500 btndown 8
+2550 btn 13
+2600 btnup 8
+2610 expect 0 step 2 0 0
+2700 btn 8
+2800 keys 0x1
+2850 keys 0x5
+2870 keys 0x1
+2900 keys 0x11
+2950 keys 0x1
+3000 keys 0
+3010 expect 3 chain
+3100 btn 4
+3200 keys 0x4
+3250 keys 0
+3260 expect 1 kitcur
+3300 btndown 7
+3600 keys 0x200
+3650 keys 0
+3700 btnup 7
+3710 expect 39 kitused
+3760 keys 0x2
+3770 keys 0
+3780 expect 0 ch
+3790 expect 0 mute
+3795 btn 8
+3800 keys 0x2
+3850 keys 0
+3860 expect 1 mute
+3900 btndown 8
+3950 keys 0x8
+4000 keys 0
+4050 btnup 8
+4060 expect 2 solo
+4070 expect 0 view
+4100 btndown 11
+5100 shot
+5150 btnup 11
+5160 expect 0 view
+5500 end

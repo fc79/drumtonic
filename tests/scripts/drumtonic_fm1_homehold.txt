@@ -1,0 +1,17 @@
+# Drumtonic on the FM-1: on SEQ HOME held shows the patterns on the white keys as on
+# LIVE: the one playing lit, one with notes dim; a white key picks one; letting go is back on SEQ's steps, the page unchanged.
+50 btn 8
+100 btn 11
+110 expect 3 view
+200 expect 2 whiteled 0
+300 btndown 8
+400 expect 2 whiteled 0
+500 keys 0x80
+600 keys 0
+650 expect 4 pat
+700 expect 2 whiteled 4
+710 expect 1 whiteled 0
+800 btnup 8
+900 expect 3 view
+910 expect 1 whiteled 4
+1000 end

@@ -1,0 +1,21 @@
+# Drumtonic on the FM-1: N.ENV's ENV knob (enc 2 = knob 1, channel 0) goes from EXP through every % to LIN, one click
+# more is CLAP, one click back is LIN; a turn down from a saved EXP (0) stays EXP.
+50 btn 8
+100 btn 6
+200 btn 1
+210 btn 1
+220 btn 1
+230 btn 1
+240 expect 4 bank
+300 expect 0 param 0 11
+400 enc 2 1
+410 expect 22 param 0 11
+1000 enc 2 -5
+1010 expect 21 param 0 11
+1500 enc 2 43
+1510 expect 64 param 0 11
+2000 enc 2 1
+2010 expect 106 param 0 11
+2500 enc 2 -1
+2510 expect 64 param 0 11
+3000 end

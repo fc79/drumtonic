@@ -1,0 +1,30 @@
+# Drumtonic on the FM-1: a p-lock (a step held on SOUND + a knob), what plays at that step, a knob recorded with REC,
+# an LFO put on a knob (LFO held) and taken off (GLO + the knob). P_FREQ 1, P_PHASE 23, P_MIX 16
+# (a first press only closes the opening)
+50 btn 8
+100 btn 6
+200 keys 0x80
+250 enc 3 120
+260 expect 127 lane 0 0 1 4
+270 expect 1 lanes
+300 keys 0
+310 expect 1 step 0 0 4
+400 btn 12
+950 expect 127 live 0 1
+1080 expect -1 live 0 1
+1200 btn 13
+1300 enc 4 -120
+1450 expect 2 lanes
+1500 btn 13
+1600 btndown 5
+1650 enc 5 1
+1700 btnup 5
+1710 expect 16 lfo 0 0
+1800 shot
+2100 btndown 7
+2150 enc 5 1
+2200 btnup 7
+2210 expect -1 lfo 0 0
+2300 btn 12
+2400 expect -1 live 0 1
+2600 end

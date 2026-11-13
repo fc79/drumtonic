@@ -1,0 +1,13 @@
+# Drumtonic on the FM-1 with the reverb and the delay sent (MIX: BD's REV and DLY up), playing: tests/cpu2_same.sh renders
+# it on one core and on two (HOST_CPU2) and wants the same sound, bit for bit
+50 btn 8
+100 btn 4
+200 enc 3 80
+300 enc 4 80
+400 expect 12800 send 0 0
+400 expect 12800 send 0 1
+500 btn 12
+2000 expect 0 rvquiet
+4000 btn 12
+4010 expect 0 run
+6000 end

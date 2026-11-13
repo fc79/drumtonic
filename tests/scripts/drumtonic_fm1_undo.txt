@@ -1,0 +1,100 @@
+# Drumtonic on the FM-1: the undo (undo.c). HOME + OCT- goes back, HOME + OCT+ forward; each keeps the state it leaves
+# for the other, so a change made after an undo keeps the redo. Taps close together are one change; a mute is none;
+# a pattern cleared (GLO + REC, SEL yes) comes back. "undo": 1 OCT- has somewhere to go, 2 OCT+.
+# Then a knob turned twice within 1 s is one change (FX > REVERB, DECAY), and a REC pass is one change.
+# white 2 = step 1 (0x4), white 3 = step 2 (0x10); black 2 (0x8) mutes channel 2 on LIVE
+# (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 expect 3 view
+210 expect 0 undo
+300 keys 0x4
+350 keys 0
+360 expect 1 step 0 0 1
+370 expect 1 undo
+3000 btndown 8
+3100 btn 0
+3150 shot
+3200 btnup 8
+3210 expect 0 step 0 0 1
+3220 expect 2 undo
+3230 expect 3 view
+3400 btndown 8
+3500 btn 1
+3600 btnup 8
+3610 expect 1 step 0 0 1
+3620 expect 1 undo
+3800 btndown 8
+3900 btn 0
+4000 btnup 8
+4010 expect 0 step 0 0 1
+4500 keys 0x10
+4550 keys 0
+4560 expect 1 step 0 0 2
+4570 expect 3 undo
+7100 btndown 8
+7200 btn 1
+7300 btnup 8
+7310 expect 1 step 0 0 1
+7320 expect 0 step 0 0 2
+7330 expect 1 undo
+7400 btndown 8
+7500 btn 0
+7600 btnup 8
+7610 expect 0 step 0 0 1
+7620 expect 1 step 0 0 2
+7630 expect 2 undo
+7700 btndown 8
+7800 btn 0
+7850 shot
+7900 btnup 8
+7910 expect 1 step 0 0 2
+7920 expect 2 undo
+8000 btn 8
+8010 expect 0 view
+8100 keys 0x8
+8150 keys 0
+8160 expect 2 undo
+8300 btndown 7
+8350 btn 13
+8400 btnup 7
+8410 expect 3 ask
+8500 btn 3
+8510 expect 0 ask
+8520 expect 0 step 0 0 2
+8530 expect 3 undo
+8600 btndown 8
+8700 btn 0
+8800 btnup 8
+8810 expect 1 step 0 0 2
+8820 expect 2 undo
+8830 expect 0 view
+9000 btn 2
+9010 expect 6 view
+9020 expect 73 fx 0
+9100 enc 2 1
+9400 enc 2 1
+9410 expect 75 fx 0
+9420 expect 3 undo
+10600 btndown 8
+10700 btn 0
+10800 btnup 8
+10810 expect 73 fx 0
+10820 expect 2 undo
+11000 btn 12
+11100 btn 13
+11110 expect 1 rec
+11200 keys 0x1
+11250 keys 0
+11500 keys 0x4
+11550 keys 0
+12000 btn 13
+12010 expect 0 rec
+12100 btn 12
+12200 expect 3 undo
+12300 btndown 8
+12400 btn 0
+12500 btnup 8
+12510 expect 2 undo
+12520 expect 73 fx 0
+13000 end

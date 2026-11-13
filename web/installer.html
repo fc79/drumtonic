@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Drumtonic Installer</title>
+<!-- SPDX-License-Identifier: GPL-3.0-only. The template of build/drumtonic-installer.html: tools/make_installer.py
+     fills in the package, its version and web/fm1pkg.js + web/fm1ota.js. The layout follows the FM-1 screen
+     (FM1-INTERFACCIA.md): 4 step boxes on top, the page in the middle, a status band below. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&display=swap">
+<style>
+:root {
+  --bg: #0b0b0c; --box: #17181a; --act: #24262a; --empty: #303237;
+  --txt: #f4f4f2; --sec: #a4a7ac; --ink: #0b0b0c;
+  --go: #ff6b4a;      /* Drumtonic's BD orange: the one action, the step running */
+  --ok: #8ce04a;      /* CH green: done */
+  --err: #ff2e3e;     /* REC red: errors only */
+  --face: "Saira Condensed", "Arial Narrow", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--txt); font: 500 19px/1.4 var(--face); font-variant-numeric: tabular-nums; }
+.page { max-width: 640px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
+.page > * { min-width: 0; }
+header { display: grid; gap: 2px; }
+.tag { color: var(--sec); font-size: 15px; letter-spacing: .08em; text-transform: uppercase; }
+h1 { margin: 0; font: 700 clamp(48px, 12vw, 76px)/.92 var(--face); text-transform: uppercase; }
+.pkg { color: var(--sec); }
+.pkg b { color: var(--txt); }
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+.steps div { background: var(--box); border-radius: 3px; padding: 7px 8px 6px; display: grid; color: var(--sec); min-width: 0; }
+.steps b { font: 700 18px/1.1 var(--face); letter-spacing: .03em; }
+.steps span { font-size: 15px; }
+.steps .on { background: var(--go); color: var(--ink); }
+.steps .done { background: var(--act); color: var(--txt); }
+.steps .done span::before { content: "✓ "; color: var(--ok); }
+.steps .bad { background: var(--err); color: var(--ink); }
+.panel { background: var(--box); border-radius: 3px; padding: 16px; display: grid; gap: 12px; min-height: 230px; align-content: start; }
+.panel h2 { margin: 0; font: 700 32px/1.05 var(--face); text-transform: uppercase; text-wrap: balance; }
+.panel p { margin: 0; color: var(--sec); max-width: 60ch; }
+.panel p b { color: var(--txt); }
+.dev { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; background: var(--act); border-radius: 3px; padding: 10px 12px; margin: 0; }
+.dev dt { color: var(--sec); }
+.dev dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn { font: 700 22px/1 var(--face); text-transform: uppercase; letter-spacing: .03em; border: 0; border-radius: 3px; padding: 14px 20px 12px; cursor: pointer; background: var(--go); color: var(--ink); min-height: 48px; }
+.btn.quiet { background: var(--act); color: var(--txt); }
+.btn:disabled { opacity: .5; cursor: progress; }
+.btn:focus-visible, summary:focus-visible { outline: 2px solid var(--txt); outline-offset: 2px; }
+.bar { height: 22px; background: var(--empty); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--go); border-radius: 3px; transition: width .2s linear; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+.big { font: 700 64px/1 var(--face); }
+.small { font-size: 16px; }
+.status { border-radius: 3px; padding: 8px 12px 6px; font: 700 21px/1.15 var(--face); background: var(--go); color: var(--ink); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.status span { min-width: 0; overflow-wrap: anywhere; }
+.status.ok { background: var(--ok); }
+.status.err { background: var(--err); }
+.status.msg { background: var(--txt); }
+details { background: var(--box); border-radius: 3px; }
+summary { cursor: pointer; padding: 10px 12px; font: 700 20px/1.2 var(--face); text-transform: uppercase; letter-spacing: .03em; }
+details ol { margin: 0; padding: 0 16px 14px 36px; color: var(--sec); display: grid; gap: 4px; }
+details ol b { color: var(--txt); }
+.k { background: var(--act); border-radius: 3px; padding: 1px 6px; font-weight: 700; color: var(--txt); white-space: nowrap; }
+footer { color: var(--sec); font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="tag">Firmware installer for the M-VAVE FM-1</div>
+    <h1>Drumtonic</h1>
+    <div class="pkg">Installs <b>Drumtonic @VERSION@</b> · identity <b>@PRODUCT@</b> · @SIZE@ KB</div>
+  </header>
+
+  <div class="steps" aria-label="Install steps">
+    <div id="s0"><b>CONNECT</b><span>find the FM-1</span></div>
+    <div id="s1"><b>CHECK</b><span>package read</span></div>
+    <div id="s2"><b>WRITE</b><span>firmware written</span></div>
+    <div id="s3"><b>RESTART</b><span>new firmware runs</span></div>
+  </div>
+
+  <section class="panel" id="panel" aria-live="polite"></section>
+
+  <div class="status" id="status" role="status"><span id="st1"></span><span id="st2"></span></div>
+
+  <details>
+    <summary>The FM-1 does not start?</summary>
+    <ol>
+      <li>Unplug the FM-1.</li>
+      <li>Hold <span class="k">OCT−</span> and plug the USB cable back in.</li>
+      <li>Keep holding until the screen shows <b>USB RESCUE</b>, then release.</li>
+      <li>Press <b>Connect FM-1</b> above and install again.</li>
+    </ol>
+  </details>
+
+  <footer>Works in Chrome or Edge on a computer. Use a USB data cable and close other music apps that might hold the FM-1's MIDI port. Drumtonic is GPL-3.0 firmware based on Dinghy. Package sha256 @SHA@…</footer>
+</div>
+
+<script type="module">
+/*@FM1PKG@*/
+/*@FM1OTA@*/
+
+const PRODUCT = "@PRODUCT@", VERSION = "@VERSION@";
+const PKG_B64 = "@PKG_B64@";
+
+const $ = id => document.getElementById(id);
+const panel = $("panel");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let pkg = null, access = null, up = null, dev = null, busy = false;
+
+function steps(on, done, bad = -1) {
+  for (let i = 0; i < 4; i++) $("s" + i).className = i === bad ? "bad" : i < done ? "done" : i === on ? "on" : "";
+}
+function status(cls, a, b = "") { $("status").className = "status " + cls; $("st1").textContent = a; $("st2").textContent = b; }
+function show(html, actions = {}) {
+  panel.innerHTML = html;
+  for (const [id, fn] of Object.entries(actions)) $(id).onclick = fn;
+}
+function guard(on) { busy = on; }
+addEventListener("beforeunload", e => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
+
+function describe(id) {
+  if (id.loader) return OWN_LOADER_RE.test(id.text) ? "Update loader: an install did not finish" : "Another firmware's update loader";
+  if (id.text === PRODUCT) return "Drumtonic, version unknown";
+  if (modelOf(id.text) === "FM-1" && id.version < 100) return "M-VAVE firmware V" + id.version;
+  return "Another firmware";
+}
+
+function start() {
+  dev?.link.close(); dev = null;
+  steps(0, 0);
+  if (!pkg) return;
+  if (!navigator.requestMIDIAccess) {
+    steps(-1, 0, 0);
+    show(`<h2>This browser cannot reach the FM-1</h2><p>The installer talks to the FM-1 over USB MIDI, which only <b>Chrome</b> and <b>Edge</b> on a computer allow. Open this page in one of them.</p>`);
+    status("err", "WEB MIDI NOT AVAILABLE");
+    return;
+  }
+  show(`<h2>Connect the FM-1</h2><p>Plug the FM-1 into this computer with a USB data cable and switch it on. The browser will ask to let this page use MIDI devices: allow it.</p><div class="btns"><button class="btn" id="go">Connect FM-1</button></div>`,
+       { go: connect });
+  status("msg", "READY", "NOTHING CONNECTED");
+}
+
+async function connect() {
+  const b = $("go"); if (b) { b.disabled = true; b.textContent = "Looking…"; }
+  status("", "LOOKING FOR THE FM-1");
+  if (!access) {
+    try { access = await navigator.requestMIDIAccess({ sysex: true }); up = new Updater(access); }
+    catch (e) {
+      steps(-1, 0, 0);
+      show(`<h2>MIDI access was not allowed</h2><p>The installer needs MIDI with SysEx to talk to the FM-1. Allow it in the browser's site settings (the icon left of the address), reload the page and try again.</p><p class="small">${esc(e.name)}: ${esc(e.message)}</p><div class="btns"><button class="btn" id="go">Try again</button></div>`, { go: connect });
+      status("err", "MIDI NOT ALLOWED");
+      return;
+    }
+  }
+  try { dev = await up.find(); }
+  catch (e) { dev = null; console.error(e); }
+  if (!dev) {
+    const names = up.inputNames();
+    steps(-1, 0, 0);
+    show(`<h2>FM-1 not found</h2><p>No FM-1 answered. Check that it is switched on and connected with a <b>data</b> cable (some cables only charge), and close music apps that might be using it. Then try again.</p><p class="small">MIDI inputs: ${names.length ? esc(names.join(", ")) : "none"}</p><div class="btns"><button class="btn" id="go">Try again</button></div>`, { go: connect });
+    status("err", "FM-1 NOT FOUND");
+    return;
+  }
+  const no = up.refuse(dev, PRODUCT);
+  if (no) {
+    const t = esc(dev.id.text); dev = null;
+    steps(-1, 0, 0);
+    if (no.code === "model")
+      show(`<h2>This is not an FM-1</h2><p>The connected device is <b>${t}</b>. This installer only writes the FM-1 firmware.</p><div class="btns"><button class="btn quiet" id="go">Check again</button></div>`, { go: connect });
+    else
+      show(`<h2>Another firmware's update is not finished</h2><p>The FM-1 is in the update mode of another firmware (<b>${t}</b>). Finish that update with its own installer, then come back.</p><div class="btns"><button class="btn quiet" id="go">Check again</button></div>`, { go: connect });
+    status("err", no.code === "model" ? "WRONG DEVICE" : "OTHER UPDATE PENDING", t);
+    return;
+  }
+  const resume = dev.id.loader;
+  steps(0, 1);
+  show(`<h2>${resume ? "Finish the install" : "Install Drumtonic"}</h2>
+    <dl class="dev"><dt>On the FM-1</dt><dd>${esc(dev.id.text)}</dd><dt>Firmware</dt><dd>${esc(describe(dev.id))}</dd><dt>Port</dt><dd>${esc(dev.name)}</dd></dl>
+    <p>${resume ? "An earlier install stopped before the end. The FM-1 is waiting for the rest of the firmware." : `This replaces it with <b>Drumtonic ${esc(VERSION)}</b>.`} It takes under a minute. <b>Do not unplug the FM-1 until it restarts.</b></p>
+    <div class="btns"><button class="btn" id="go">${resume ? "Finish install" : "Install Drumtonic"}</button><button class="btn quiet" id="no">Cancel</button></div>`,
+    { go: install, no: start });
+  status("", "CONNECTED", dev.id.text);
+}
+
+function progress(title, note, pct, label) {
+  show(`<h2>${title}</h2><div class="big" id="pc"></div><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="pb"><i id="pi"></i></div><p>${note}</p>`);
+  setBar(pct, label);
+}
+function setBar(pct, label) {
+  $("pi").style.width = pct + "%"; $("pb").setAttribute("aria-valuenow", pct); $("pc").textContent = label;
+}
+
+async function install() {
+  const d = dev; dev = null;
+  let phase = d.id.loader ? "write" : "check";
+  guard(true);
+  try {
+    await up.install(d, pkg.image, PRODUCT, (k, a) => {
+      if (k === "start") {
+        steps(1, 1);
+        progress("Checking the package", "The FM-1 reads parts of the firmware to check it. Nothing is written yet.", 0, "0 reads");
+        status("", "CHECKING", "DO NOT UNPLUG");
+      } else if (k === "check") setBar(Math.min(100, a * 4), a + " reads");
+      else if (k === "loader") {
+        steps(2, 2);
+        show(`<h2>Switching to update mode</h2><p>The FM-1 restarts into its update loader. This takes a few seconds.</p>`);
+        status("", "UPDATE MODE", "DO NOT UNPLUG");
+      } else if (k === "write") {
+        phase = "write";
+        if (!$("pi") || !panel.dataset.write) {
+          steps(2, 2);
+          progress("Writing the firmware", "Under a minute. <b>Do not unplug the FM-1.</b> If the cable comes out, reconnect it and press Connect FM-1: the install continues.", 0, "0 %");
+          panel.dataset.write = "1";
+          status("", "WRITING", "DO NOT UNPLUG");
+        }
+        setBar(a, a + " %");
+      } else if (k === "reboot") {
+        phase = "reboot"; delete panel.dataset.write;
+        steps(3, 3);
+        show(`<h2>Restarting</h2><p>The FM-1 starts the new firmware. Wait for it to come back.</p>`);
+        status("", "RESTARTING");
+      } else if (k === "done") {
+        steps(-1, 4);
+        show(`<h2>Drumtonic is installed</h2><dl class="dev"><dt>On the FM-1</dt><dd>${esc(a)}</dd><dt>Firmware</dt><dd>Drumtonic ${esc(VERSION)}</dd></dl><p>You can unplug the FM-1. Press any button on it to close the opening screen.</p><div class="btns"><button class="btn quiet" id="go">Start over</button></div>`, { go: start });
+        status("ok", "DONE", a);
+      }
+    });
+  } catch (e) {
+    delete panel.dataset.write;
+    failed(e, phase);
+  } finally { guard(false); }
+}
+
+function failed(e, phase) {
+  const again = `<div class="btns"><button class="btn" id="go">Connect FM-1</button></div>`;
+  const code = e.code || "error", detail = `<p class="small">${esc(e.message)}</p>`;
+  if (phase === "check" && (code === "lost" || code === "stopped")) {
+    steps(-1, 1, 1);
+    show(`<h2>The check stopped</h2><p>The FM-1 ${code === "lost" ? "was disconnected" : "stopped answering"} while checking. <b>Nothing was written</b>: reconnect it and try again.</p>${detail}${again}`, { go: connect });
+    status("err", "NOTHING WRITTEN", "RECONNECT");
+  } else if (code === "lost" || code === "stopped" || code === "noloader") {
+    steps(-1, 2, 2);
+    show(`<h2>${code === "lost" ? "The FM-1 was disconnected" : code === "noloader" ? "Update mode did not start" : "The FM-1 stopped answering"}</h2><p>The FM-1 stays in update mode and is safe: unplug the USB cable, plug it back in and press <b>Connect FM-1</b> to finish.</p>${detail}${again}`, { go: connect });
+    status("err", "INSTALL NOT FINISHED", "RECONNECT TO FINISH");
+  } else if (code === "noreturn") {
+    steps(-1, 3, 3);
+    show(`<h2>The FM-1 did not come back</h2><p>The firmware was written but the FM-1 did not restart. Switch it off and on, then press <b>Connect FM-1</b> to check it.</p>${again}`, { go: connect });
+    status("err", "NO RESTART", "SWITCH OFF AND ON");
+  } else {
+    steps(-1, 2, 2);
+    show(`<h2>The install did not finish</h2><p>Something unexpected happened. Unplug and reconnect the FM-1, then press <b>Connect FM-1</b>: if it is in update mode, the installer finishes the write.</p>${detail}${again}`, { go: connect });
+    status("err", "ERROR", code.toUpperCase());
+  }
+}
+
+try {
+  const raw = Uint8Array.from(atob(PKG_B64), c => c.charCodeAt(0));
+  pkg = loadPackage(raw, PRODUCT);
+  start();
+} catch (e) {
+  steps(-1, 0, 0);
+  show(`<h2>This installer file is damaged</h2><p>The firmware inside it did not pass its checks, so nothing will be sent to the FM-1. Download the installer again.</p><p class="small">${esc(e.message)}</p>`);
+  status("err", "DAMAGED INSTALLER");
+}
+</script>
+</body>
+</html>

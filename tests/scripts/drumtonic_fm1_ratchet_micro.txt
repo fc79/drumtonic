@@ -1,0 +1,30 @@
+# Drumtonic on the FM-1: a ratchet with micro timing. BD's step 3 (P1: off; made by the key) half a step late (OCT+ x12:
+# +12/24) with ratchet 2: its hits at 1/2 and 2/2 of the step, the second at the next step's start (it runs over).
+# PLAY at 1000, 120 BPM: step 1 at ~1000, step 3 at 1250: the hits at ~1312 and ~1375, then step 5 at 1500.
+# white 3 = 0x10 (a first press only closes the opening)
+50 btn 8
+100 btn 11
+200 keys 0x10
+210 btn 1
+220 btn 1
+230 btn 1
+240 btn 1
+250 btn 1
+260 btn 1
+270 btn 1
+280 btn 1
+290 btn 1
+300 btn 1
+310 btn 1
+320 btn 1
+400 btn 10
+410 expect 2 ratch 0 0 2
+500 keys 0
+1000 btn 12
+1290 expect 1 chhits 0
+1340 expect 2 chhits 0
+1365 expect 2 chhits 0
+1400 expect 3 chhits 0
+1480 expect 3 chhits 0
+1520 expect 4 chhits 0
+1600 end

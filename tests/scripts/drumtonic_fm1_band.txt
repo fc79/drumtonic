@@ -1,0 +1,44 @@
+# Drumtonic on the FM-1: the state band with note repeat on (proposal A, 2026-11-12): the left side "10 CY  RPT 1/16T",
+# the right one LEN / page / pattern / EXT as without note repeat; where even 18 px leave too little room, the right
+# side leaves out LEN unchanged, then EXT, then LEN changed, and never overlaps the left one.
+# "bot": fields left out * 2 + 1 when the right side fits beside the left one.
+# white 12 = 0x80000, white 13 = 0x200000, black 10 (CY) = 0x400000 (a first press only closes the opening)
+50 btn 8
+200 btn 8
+300 enc 1 1
+400 btn 8
+450 btndown 8
+460 keys 0x80000
+470 keys 0
+480 btnup 8
+500 btn 11
+510 keys 0x400000
+520 keys 0
+530 btn 10
+540 enc 4 1
+550 enc 4 1
+560 enc 4 1
+570 enc 4 1
+580 enc 4 1
+700 expect 21 nr
+# stopped: "LEN 16  P12 EXT" too long beside it: LEN unchanged left out
+700 expect 3 bot
+1000 clock 120 400
+1500 midi 0xFA 0 0
+1600 expect 3 bot
+2000 btndown 8
+2010 keys 0x200000
+2020 keys 0
+2030 btnup 8
+# pattern 13 queued: "P12>13 EXT", still LEN unchanged left out
+2100 expect 3 bot
+1900 enc 6 2
+2150 expect 32 len 11
+# LEN 32 / 16 too: EXT and then LEN changed left out, "P12>13" and the play icon stay
+4000 expect 5 bot
+4010 shot
+# note repeat off ("10 CY  STEPS"): the same rule (until now "LEN 32 / 16  P12>13 EXT" ran over the left side)
+4020 btn 10
+4060 expect 5 nr
+4060 expect 5 bot
+4100 end

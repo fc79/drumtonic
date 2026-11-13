@@ -1,0 +1,9 @@
+# Drumtonic on the FM-1: a key that closes the opening does nothing else (white 2 on LIVE would pick pattern 2).
+5000 keys 0x4
+5050 keys 0
+5060 expect 0 open
+5070 expect 0 next
+5100 keys 0x4
+5150 keys 0
+5160 expect 1 next
+5300 end
