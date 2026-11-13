@@ -97,7 +97,7 @@ done
 $CC -DBOARD_SMK37=1 -o "$OUT/ldr_test_smk" tests/ldr_test.c
 run "update loader, SMK-37: app area 0x4000-0x9CFFF, protected ranges untouched" "$OUT/ldr_test_smk" "$OUT/smk_old.fwsc" "$OUT/smk_new.fwsc"
 found=0
-for m in ":SMK-37 Pro_933" "-elite:SMK-37 Elite_933" "-mke:MKE-P37_933"; do
+for m in ":SMK-37 Pro_987" "-elite:SMK-37 Elite_987" "-mke:MKE-P37_987"; do
     for f in build/drumtonic*-smk37${m%%:*}.fwsc; do
         [ -f "$f" ] || continue
         found=1

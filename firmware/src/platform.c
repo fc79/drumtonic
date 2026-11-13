@@ -102,9 +102,9 @@ static void fm1_led_key_glow(uint32_t id, int on)   /* as fm1_led_key, the dim l
 #endif
 #ifndef FELUCCA_ID
 #if BOARD_SMK37
-#define FELUCCA_ID SMK_MODEL "_933"             /* Drumtonic: SMK-37 Pro_933 (Elite, MKE-P37: SMK_MODEL), tools/build.py */
+#define FELUCCA_ID SMK_MODEL "_987"             /* Drumtonic: SMK-37 Pro_987 (Elite, MKE-P37: SMK_MODEL), tools/build.py */
 #else
-#define FELUCCA_ID "FM-1_933"                   /* package identity: Drumtonic (Dinghy: 99N), tools/build.py */
+#define FELUCCA_ID "FM-1_987"                   /* package identity: Drumtonic (Dinghy: 99N), tools/build.py */
 #endif
 #endif
 #ifndef APP_VER

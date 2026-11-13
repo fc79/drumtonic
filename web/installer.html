@@ -128,11 +128,13 @@ function show(html, actions = {}) {
 function guard(on) { busy = on; }
 addEventListener("beforeunload", e => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
 
-const OLD_PRODUCT = "FM-1_923";   /* Drumtonic up to 0.2; COQUÍ answers with it too, so only one that sends its version */
+/* Drumtonic's earlier identities: 923 up to 0.2 (COQUÍ answers with it too), 933 in 0.2.1 (sloopDX's range): only one
+   that sends its version counts as Drumtonic */
+const OLD_PRODUCTS = ["FM-1_923", "FM-1_933"];
 function drumtonicOf(id) {        /* the Drumtonic version on the FM-1 ("" when it does not run Drumtonic) */
   if (id.loader) return "";
   if (id.text === PRODUCT) return id.release || "?";
-  return id.text === OLD_PRODUCT && id.release ? id.release : "";
+  return OLD_PRODUCTS.includes(id.text) && id.release ? id.release : "";
 }
 function describe(id) {
   if (id.loader) return OWN_LOADER_RE.test(id.text) ? "Update loader: an install did not finish" : "Another firmware's update loader";
