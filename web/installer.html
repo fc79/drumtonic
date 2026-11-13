@@ -128,12 +128,16 @@ function show(html, actions = {}) {
 function guard(on) { busy = on; }
 addEventListener("beforeunload", e => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
 
+const OLD_PRODUCT = "FM-1_923";   /* Drumtonic up to 0.2; COQUÍ answers with it too, so only one that sends its version */
+function drumtonicOf(id) {        /* the Drumtonic version on the FM-1 ("" when it does not run Drumtonic) */
+  if (id.loader) return "";
+  if (id.text === PRODUCT) return id.release || "?";
+  return id.text === OLD_PRODUCT && id.release ? id.release : "";
+}
 function describe(id) {
   if (id.loader) return OWN_LOADER_RE.test(id.text) ? "Update loader: an install did not finish" : "Another firmware's update loader";
-  if (id.text === PRODUCT) {
-    if (!id.release) return "Drumtonic 0.1 or earlier";   /* (they did not send their version) */
-    return id.release === "0.0" ? "Drumtonic, a development build" : "Drumtonic " + id.release;
-  }
+  const v = drumtonicOf(id);
+  if (v) return v === "?" ? "Drumtonic" : v === "0.0" ? "Drumtonic, a development build" : "Drumtonic " + v;
   if (modelOf(id.text) === "FM-1" && id.version < 100) return "M-VAVE firmware V" + id.version;
   return "Another firmware";
 }
@@ -192,7 +196,7 @@ async function connect() {
   show(`<h2>${resume ? "Finish the install" : "Install Drumtonic"}</h2>
     <dl class="dev"><dt>On the FM-1</dt><dd>${esc(dev.id.text)}</dd><dt>Firmware</dt><dd>${esc(describe(dev.id))}</dd><dt>Port</dt><dd>${esc(dev.name)}</dd></dl>
     <p>${resume ? "An earlier install stopped before the end. The FM-1 is waiting for the rest of the firmware." : `This replaces it with <b>Drumtonic ${esc(VERSION)}</b>.`} It takes under a minute. <b>Do not unplug the FM-1 until it restarts.</b></p>
-    ${resume || dev.id.text === PRODUCT ? "" : `<p class="small">No backup yet? Press Cancel and make one first (this page cannot): ${BACKUP_LINK}</p>`}
+    ${resume || drumtonicOf(dev.id) ? "" : `<p class="small">No backup yet? Press Cancel and make one first (this page cannot): ${BACKUP_LINK}</p>`}
     <div class="btns"><button class="btn" id="go">${resume ? "Finish install" : "Install Drumtonic"}</button><button class="btn quiet" id="no">Cancel</button></div>`,
     { go: install, no: start });
   status("", "CONNECTED", dev.id.text);

@@ -226,9 +226,9 @@ def installs():
     dev = FakeFM1(image, identity="FM-1_905", name="Felucca")
     rc, out, err = cli(["--info"], dev)
     ok(rc == 0 and "FM-1_905" in out and "running" in out and dev.upgrades == 0, "--info: identity of the connected FM-1")
-    dev = FakeFM1(image, identity="FM-1_923\0V0.2", name="Felucca")
+    dev = FakeFM1(image, identity="FM-1_933\0V0.2", name="Felucca")
     rc, out, err = cli(["--info"], dev)
-    ok(rc == 0 and "FM-1_923  version 0.2" in out, "--info: the version Drumtonic sends after its identity")
+    ok(rc == 0 and "FM-1_933  version 0.2" in out, "--info: the version Drumtonic sends after its identity")
 
     dev = FakeFM1(image, identity="ota-FM-1_900", name="Felucca Update")
     rc, out, err = cli(["--info"], dev)

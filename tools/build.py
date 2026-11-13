@@ -9,14 +9,15 @@ Outputs in build/: dinghy.bin (app), loader/ota.bin (update loader),
 drumtonic.fwsc (package). See README.md for the toolchain and the SDK.
 
 --board smk37 (or BOARD=smk37) builds for the M-Vave SMK-37 (docs/dinghy/SMK37.md): -DBOARD_SMK37=1 for the app and the
-loader, identity SMK-37 Pro_923, the SMK flash layout (fm1pkg_make.py, app slot
+loader, identity SMK-37 Pro_933, the SMK flash layout (fm1pkg_make.py, app slot
 0x97400), the package build/drumtonic-smk37.fwsc. --model elite / mke (or MODEL=) with smk37: the same build under the
 SMK-37 Elite's or the MKE-P37's model name (identity, loader and update record; -DSMK_MODEL), so M-Vave's updater
 still takes that unit's factory package: drumtonic-smk37-elite.fwsc, -mke.fwsc. The default stays the FM-1.
 
-Drumtonic's identity is 923 on every board and in every build (FM-1_923, SMK-37 Pro_923, ...): no 9N0-9N9 decade was
-free in the FM-1 Firmware Hub's catalog, so a release changes only the version on the screen. It was 921 until
-fm1-dock took FM-1_921 (2026-11-01); 923 was the only number near it that no entry names (2026-11-03, docs/DRUMTONIC.md).
+Drumtonic's identity is 933 on every board and in every build (FM-1_933, SMK-37 Pro_933, ...): no 9N0-9N9 decade was
+free in the FM-1 Firmware Hub's catalog, so a release changes only the version on the screen (and sends it after the
+identity). It was 921 until fm1-dock took FM-1_921 (2026-11-01), then 923 until COQUI took FM-1_923; 933 from 0.2.1
+(2026-11-13): free on the hub, and no longer identity starts with it (docs/dev/NOTES.md, Identity).
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
@@ -69,7 +70,7 @@ DATA_FAMILY = "TONICA"              # the SMK store's owner tag (store.h): 1..7 
                                     # (Drumtonic's earlier name: kept, so what a unit saved stays its own)
 SCREEN_NAME = "DRUMTONIC"           # the update loader's screen (FM-1, ldr_screen.c): the name and its colour (RGB565)
 SCREEN_COLOUR = 0xFEEA              # the app's step highlight, #FFDC50
-IDENT = "923"                       # Drumtonic, every build (Dinghy: 99N). 9NN: the installers' resume wants FM-1_9NN
+IDENT = "933"                       # Drumtonic, every build (Dinghy: 99N). 9NN: the installers' resume wants FM-1_9NN
 PRODUCT = "FM-1_" + IDENT
 VERSION = None                      # APP_VER for release builds
 

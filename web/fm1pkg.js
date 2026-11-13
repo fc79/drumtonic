@@ -44,7 +44,7 @@ export function deinterleave(raw) {
     return [image, n];
 }
 
-/** the package identity ("FM-1_923"): one marker byte after each identity block (0x7D: none) */
+/** the package identity ("FM-1_933"): one marker byte after each identity block (0x7D: none) */
 export function productOf(raw) {
     if (raw.length < BLOCKS * BLK) throw new Error("not an FM-1 package (too short)");
     const ib = identityBlocks(raw);

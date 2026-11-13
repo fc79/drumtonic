@@ -7,7 +7,7 @@
 
 web/installer.html is the page; web/fm1pkg.js and web/fm1ota.js (the same files web/test_web.mjs tests) are inlined
 into it, their `export` words dropped. The package is checked first with tools/fm1_install.py's own checks
-(identity FM-1_923, the Felucca loader marker, the files' CRCs): a bad package makes no installer. The version shown
+(identity FM-1_933, the Felucca loader marker, the files' CRCs): a bad package makes no installer. The version shown
 is the last commit that touched firmware/ (with "+changes" when firmware/ has uncommitted edits), and the page
 prints the package's sha256 so a copy can be matched to its build. Open the result in Chrome or Edge: it needs Web
 MIDI with SysEx, nothing else, no network but the font."""
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import fm1_install as I  # noqa: E402
 
-PRODUCT = "FM-1_923"
+PRODUCT = "FM-1_933"
 
 
 def git(*args):

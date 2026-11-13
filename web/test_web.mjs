@@ -45,7 +45,7 @@ const FIN = [O.FINISH_CHECK, O.FINISH_WRITE];
 class FakeFM1 {
     constructor(access, image, o = {}) {
         Object.assign(this, { access, image, identity: "FM-1_015", name: "FM-1", unplugAfter: 0, stallAfter: 0, badAddr: null,
-                              afterWrite: "FM-1_923", loader: ["ota-FM-1_923", "Felucca Update"], split: false, stuck: false }, o);
+                              afterWrite: "FM-1_933", loader: ["ota-FM-1_933", "Felucca Update"], split: false, stuck: false }, o);
         this.served = this.bad = this.upgrades = this.hs = this.early = 0;
         this.gen = 0;
         this.boot(this.identity, this.name);
@@ -110,7 +110,7 @@ class FakeFM1 {
 
 // --------------------------------------------------------------- helpers ---
 const image = Uint8Array.from({ length: 0x2000 }, (_, i) => (i * 7) & 0xFF);
-async function run(o, product = "FM-1_923") {
+async function run(o, product = "FM-1_933") {
     const access = new FakeAccess(), dev = new FakeFM1(access, image, o), up = new O.Updater(access), steps = [];
     let err = null, found = null;
     try {
@@ -130,21 +130,21 @@ const t0 = () => performance.now();
     ok(r && r.addr === 0x1234 && r.n === 512 && r.fl === 1, "parseRequest: address, length, flags");
     const idp = (b) => [0xF0, ...O.pack7([0, 0x59, 0x11, 0, 0, 0, ...b, ...new Array(28 - b.length).fill(0)]), 0xF7];
     const bytes = t => Array.from(t, c => c.charCodeAt(0));
-    let id = O.parseIdentity(idp(bytes("FM-1_923\0V0.2")));
-    ok(id && id.text === "FM-1_923" && id.version === 923 && id.release === "0.2", "parseIdentity: the version after the identity");
-    id = O.parseIdentity(idp(bytes("FM-1_923")));
-    ok(id && id.text === "FM-1_923" && id.release === "", "parseIdentity: no version sent -> none");
-    const flash = bytes("FM-1_923"); flash.length = 24; flash.fill(0, 8); flash.push(0x85, 0x60, 0x14);
+    let id = O.parseIdentity(idp(bytes("FM-1_933\0V0.2")));
+    ok(id && id.text === "FM-1_933" && id.version === 933 && id.release === "0.2", "parseIdentity: the version after the identity");
+    id = O.parseIdentity(idp(bytes("FM-1_933")));
+    ok(id && id.text === "FM-1_933" && id.release === "", "parseIdentity: no version sent -> none");
+    const flash = bytes("FM-1_933"); flash.length = 24; flash.fill(0, 8); flash.push(0x85, 0x60, 0x14);
     id = O.parseIdentity(idp(flash));
     ok(id && id.release === "", "parseIdentity: the flash id at 24-26 is not a version");
-    id = O.parseIdentity(idp(bytes("FM-1_923\0V0.123456789012345")));
-    ok(id && id.text === "FM-1_923" && id.release === "", "parseIdentity: a version running into byte 24 -> none");
-    ok(O.sameKeyboard("FM-1_015", "FM-1_923") && !O.sameKeyboard("SMK-37 Pro_923", "FM-1_923") && O.OWN_LOADER_RE.test("ota-FM-1_923")
+    id = O.parseIdentity(idp(bytes("FM-1_933\0V0.123456789012345")));
+    ok(id && id.text === "FM-1_933" && id.release === "", "parseIdentity: a version running into byte 24 -> none");
+    ok(O.sameKeyboard("FM-1_015", "FM-1_933") && !O.sameKeyboard("SMK-37 Pro_933", "FM-1_933") && O.OWN_LOADER_RE.test("ota-FM-1_933")
        && !O.OWN_LOADER_RE.test("ota-FM-1_015"), "models and own loaders as in fm1_install.py");
 }
 {
     const { dev, err, steps } = await run({});
-    ok(!err && dev.bad === 0 && dev.early === 0 && dev.upgrades === 2 && dev.served === 11 && steps.at(-1) === "done:FM-1_923" && steps.includes("write:100"),
+    ok(!err && dev.bad === 0 && dev.early === 0 && dev.upgrades === 2 && dev.served === 11 && steps.at(-1) === "done:FM-1_933" && steps.includes("write:100"),
        `install: running -> loader -> Drumtonic (${dev.served} reads, ${err ? err.message : "no error"})`);
 }
 {
@@ -152,11 +152,11 @@ const t0 = () => performance.now();
     ok(!err && dev.bad === 0 && dev.served === 11, "install: every reply in two pieces -> rebuilt, installed");
 }
 {
-    const { dev, err, steps } = await run({ identity: "ota-FM-1_923", name: "Felucca Update" });
+    const { dev, err, steps } = await run({ identity: "ota-FM-1_933", name: "Felucca Update" });
     ok(!err && dev.bad === 0 && dev.upgrades === 1 && !steps.includes("loader"), "install: already in update mode -> finishes the write");
 }
 {
-    const { dev, err } = await run({ identity: "SMK-37 Pro_923", name: "SMK-37 Pro" });
+    const { dev, err } = await run({ identity: "SMK-37 Pro_933", name: "SMK-37 Pro" });
     ok(err && err.code === "model" && dev.upgrades === 0, "an SMK-37 -> refused, nothing sent but the handshake");
 }
 {
@@ -172,15 +172,15 @@ const t0 = () => performance.now();
     ok(err && err.code === "lost" && /nothing was written/.test(err.message) && t0() - s < 1000, "unplugged in step 1 -> lost at once, nothing written");
 }
 {
-    const s = t0(), { err } = await run({ identity: "ota-FM-1_923", name: "Felucca Update", unplugAfter: 3 });
+    const s = t0(), { err } = await run({ identity: "ota-FM-1_933", name: "Felucca Update", unplugAfter: 3 });
     ok(err && err.code === "lost" && t0() - s < 150, `unplugged during the write -> lost at once (${Math.round(t0() - s)} ms, the idle time is 200)`);
 }
 {
-    const { err } = await run({ identity: "ota-FM-1_923", name: "Felucca Update", stallAfter: 3 });
+    const { err } = await run({ identity: "ota-FM-1_933", name: "Felucca Update", stallAfter: 3 });
     ok(err && err.code === "stopped", "the loader stops answering -> stopped after the idle time");
 }
 {
-    const { err } = await run({ identity: "ota-FM-1_923", name: "Felucca Update", badAddr: image.length });
+    const { err } = await run({ identity: "ota-FM-1_933", name: "Felucca Update", badAddr: image.length });
     ok(err && err.code === "badreq", "a read past the package -> refused");
 }
 {
@@ -197,10 +197,10 @@ const pkg = process.argv[2] || "build/drumtonic.fwsc";
 if (existsSync(pkg)) {
     const raw = new Uint8Array(readFileSync(pkg));
     let r = null, e = null;
-    try { r = P.loadPackage(raw, "FM-1_923"); } catch (x) { e = x; }
-    ok(r && r.product === "FM-1_923" && !e, `${pkg}: FM-1_923, loader marker, CRCs (${e ? e.message : r.image.length + " B image"})`);
+    try { r = P.loadPackage(raw, "FM-1_933"); } catch (x) { e = x; }
+    ok(r && r.product === "FM-1_933" && !e, `${pkg}: FM-1_933, loader marker, CRCs (${e ? e.message : r.image.length + " B image"})`);
     const bad = raw.slice(); bad[raw.length - 100] ^= 1;
-    let e2 = null; try { P.loadPackage(bad, "FM-1_923"); } catch (x) { e2 = x; }
+    let e2 = null; try { P.loadPackage(bad, "FM-1_933"); } catch (x) { e2 = x; }
     ok(e2 && /damaged/.test(e2.message), "a changed byte in the package -> damaged, refused");
     let e3 = null; try { P.loadPackage(raw, "FM-1_955"); } catch (x) { e3 = x; }
     ok(e3 && /not FM-1_955/.test(e3.message), "another identity wanted -> refused");

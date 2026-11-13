@@ -230,7 +230,7 @@ These are the places the FM-1 firmwares share: the settings at 0xFC000, the kits
 the library at 0x97000 and 0x9B000. **A save replaces what another FM-1 firmware kept there**, so back up first:
 [BACKUP.md](BACKUP.md).
 
-Drumtonic reports itself as `FM-1_923`.
+Drumtonic reports itself as `FM-1_933`.
 
 ## If it goes wrong
 
