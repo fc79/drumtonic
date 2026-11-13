@@ -49,6 +49,8 @@ static uint32_t mot_ratch(uint32_t pat, uint32_t ch, uint32_t st);
 #define SEQ_COND_AT(pat, ch, st) mot_cond_at(pat, ch, st)   /* (micro timing: motion.c) */
 #define SEQ_MICRO(pat, ch, st) mot_micro(pat, ch, st)
 #define SEQ_LOCK_CH(pat, st, ch) mot_lock_ch(pat, st, ch)
+static void rec_micro(uint32_t pat, uint32_t ch, uint32_t st, int32_t m);
+#define SEQ_REC_MICRO(pat, ch, st, m) rec_micro(pat, ch, st, m)   /* (REC FREE: ui_fm1.c) */
 #include "seq_fm1.c"                            /* (32 patterns up to 64 steps: app_fm1.c) */
 #endif
 

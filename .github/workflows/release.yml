@@ -19,9 +19,9 @@ jobs:
       id-token: write          # the attestation's signing identity
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -60,7 +60,7 @@ jobs:
           ls -l build/drumtonic-"$V"*.fwsc
           (cd build && sha256sum drumtonic-"$V"*.fwsc > SHA256SUMS)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: drumtonic-fwsc
           path: |
@@ -70,7 +70,7 @@ jobs:
 
       - name: Attest the packages (tags only)
         if: github.ref_type == 'tag'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: build/drumtonic-[0-9]*.fwsc
 
@@ -87,7 +87,7 @@ jobs:
       # (files: the release build, not the dev one; no comments inside the list: they would be part of a pattern)
       - name: Release (tags only)
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             build/drumtonic-[0-9]*.fwsc
@@ -95,7 +95,7 @@ jobs:
             build/SHA256SUMS
           generate_release_notes: true
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.ref_type == 'tag' && !github.event.repository.private
         with:
           path: site
@@ -112,4 +112,4 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

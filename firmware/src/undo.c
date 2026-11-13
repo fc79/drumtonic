@@ -2,7 +2,7 @@
 /* The FM-1's undo, one level (FM1-INTERFACCIA.md): HOME + OCT- goes back to the state before the last change, HOME +
  * OCT+ to the state the last OCT- left; each keeps the state it leaves for the other, so a change made after an undo
  * does not lose what was undone. What it covers: the patterns (steps, lengths, rate, swing), the lanes (motion, p-locks,
- * conditions, micro timing), the LFOs, the kit playing (sounds, names) and its sends and effects (kitx). Not the tempo,
+ * conditions, micro timing) and QUANT, the LFOs, the kit playing (sounds, names) and its sends and effects (kitx). Not the tempo,
  * mute, solo, the settings, nor anything written to the flash (SAVE, the kits' slots, the library).
  *
  * Three copies in the pool: OCT-'s, OCT+'s and the work one (the state before the change in progress). A change is
@@ -15,6 +15,7 @@ typedef struct {
     seq_song_t song;
     lane_t lanes[NLANE];
     lfo_t lfos[SEQ_NPAT][NLFO];
+    uint8_t quant[SEQ_NPAT][DRUM_NCH];          /* (QUANT, motion.c) */
     drum_kit_t kit;
     uint8_t x[SND_NX];
     uint8_t kc;                                 /* (which kit it is: kit_cur) */
@@ -37,6 +38,7 @@ static void undo_take(uint32_t i)
     memcpy(&d->song, &seq_song, sizeof seq_song);
     memcpy(d->lanes, lanes, sizeof lanes);
     memcpy(d->lfos, lfos, sizeof lfos);
+    memcpy(d->quant, mot_quant, sizeof mot_quant);
     d->kit = kit;
     memcpy(d->x, kitx, SND_NX);
     d->kc = kit_cur;
@@ -45,7 +47,7 @@ static uint32_t undo_same(uint32_t i)
 {
     const undo_st_t *d = &undo_st[i % 3u];
     return !memcmp(&d->song, &seq_song, sizeof seq_song) && !memcmp(d->lanes, lanes, sizeof lanes) &&
-           !memcmp(d->lfos, lfos, sizeof lfos) && !memcmp(&d->kit, &kit, sizeof kit) && !memcmp(d->x, kitx, SND_NX) && d->kc == kit_cur;
+           !memcmp(d->lfos, lfos, sizeof lfos) && !memcmp(d->quant, mot_quant, sizeof mot_quant) && !memcmp(&d->kit, &kit, sizeof kit) && !memcmp(d->x, kitx, SND_NX) && d->kc == kit_cur;
 }
 static void undo_put(uint32_t i)                /* copy i becomes the state: as the main loop's edits do it */
 {
@@ -65,6 +67,7 @@ static void undo_put(uint32_t i)                /* copy i becomes the state: as 
             lanes[k].used = used;
         }
     memcpy(lfos, d->lfos, sizeof lfos);
+    memcpy(mot_quant, d->quant, sizeof mot_quant);
     if (d->kc == kit_cur) {                     /* the kit playing: as it was */
         kit = d->kit;
         memcpy(kitx, d->x, SND_NX);

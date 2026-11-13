@@ -1,0 +1,80 @@
+# Drumtonic on the FM-1: REC FREE (SETTINGS > REC) and QUANT (STEPS, knob 4). At 60 BPM (a step 250 ms, a 24th 10.4 ms)
+# LT (pattern 1: empty) is played by hand and by MIDI while recording: each hit on the step nearest, with its micro timing.
+# Then QUANT pulls it to the grid as it plays, the lane unchanged; SAVE writes QUANT into the lane and puts it back to 0;
+# HOME + OCT- (undo) gives the timing as recorded and QUANT back.
+# buttons: 0 OCT- 1 OCT+ 3 SEL 7 GLO 8 HOME 9 SAVE 11 SEQ 12 PLAY 13 REC; encoders: 0 SELECT 2-5 KNOB 1-4
+# LT: black 5 = key bit 13 (0x2000), MIDI note 41
+50 btn 8
+200 btn 8
+300 enc 0 1
+350 btn 3
+400 expect 1 recfree
+450 btn 8
+500 enc 2 -60
+600 expect 60 bpm
+650 btn 11
+700 btn 13
+1000 btn 12
+# PLAY at 1000: step n (from 0) at 1000 + 250 n, a pass 4000 ms. LT by hand 60 ms after step 2 (1500), 50 ms before
+# step 4 (2000), by MIDI 30 ms after step 10 (3500). A hit is made at the start of the next render, so it is kept where
+# the last render ended (up to 5.8 ms before the press): 60 ms is 5.76 24ths, kept as 5; 50 ms early as -5; 30 ms as 3
+1560 keys 0x2000
+1600 keys 0
+1950 keys 0x2000
+1990 keys 0
+3530 midi 0x99 41 100
+3540 midi 0x89 41 0
+4000 expect 1 step 0 5 2
+4000 expect 1 step 0 5 4
+4000 expect 1 step 0 5 10
+4000 expect 0 step 0 5 3
+4010 expect 5 micro 0 5 2
+4010 expect -5 micro 0 5 4
+4010 expect 3 micro 0 5 10
+4020 expect 133 lane 0 5 27 2
+4100 btn 13
+# the next pass (from 5000), as recorded: step 2's hit at ~5552, step 4's at ~5948, step 10's at ~7531 (chhits: the
+# sequencer's hits only, not the ones by hand or MIDI)
+5530 expect 0 chhits 5
+5575 expect 1 chhits 5
+5925 expect 1 chhits 5
+5970 expect 2 chhits 5
+7510 expect 2 chhits 5
+7555 expect 3 chhits 5
+# QUANT 50 % on LT (the channel chosen by the hits): +5 plays +3 (2.5, rounded away from 0), -5 plays -3, +3 plays +2;
+# the lane as recorded
+7700 enc 5 10
+8000 enc 5 10
+8300 enc 5 10
+8600 enc 5 10
+8900 enc 5 10
+8950 expect 50 quant 0 5
+8950 expect 3 micro 0 5 2
+8950 expect -3 micro 0 5 4
+8950 expect 2 micro 0 5 10
+8950 expect 133 lane 0 5 27 2
+# the pass from 9000 at 50 %: step 2 at ~9531, step 4 at ~9969
+9515 expect 3 chhits 5
+9550 expect 4 chhits 5
+9950 expect 4 chhits 5
+9990 expect 5 chhits 5
+# SAVE: QUANT into the lane, QUANT 0; the timing played the same
+10500 btn 9
+11000 expect 0 quant 0 5
+11000 expect 3 micro 0 5 2
+11000 expect 131 lane 0 5 27 2
+11000 expect -3 micro 0 5 4
+11000 expect 2 micro 0 5 10
+# undo: the timing as recorded and QUANT 50 again
+11500 btndown 8
+11550 btn 0
+11600 btnup 8
+11700 expect 50 quant 0 5
+11700 expect 133 lane 0 5 27 2
+# GLO + QUANT: back to 0 %, the lane as recorded
+12000 btndown 7
+12050 enc 5 1
+12100 btnup 7
+12200 expect 0 quant 0 5
+12200 expect 5 micro 0 5 2
+12300 end

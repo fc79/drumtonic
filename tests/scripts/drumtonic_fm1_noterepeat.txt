@@ -1,6 +1,6 @@
 # Drumtonic on the FM-1: note repeat on SEQ. ARP's tap turns it on (1/4 to start; knob 3 to 1/16 here); a black key held repeats its
 # channel: at once, then at the rate counted from the key (120 BPM: 1/16 = 125 ms), stopped or playing. ARP held + white 1-8 or a knob: the rate (1/4 1/4T 1/8 1/8T 1/16 1/16T 1/32 1/32T). Off SEQ it goes off. With REC, the hits on the steps nearest:
-# two on a step, its ratchet 2. nr: on * 16 + the rate (0 1/4 .. 7 1/32T).
+# one hit a step, never a ratchet (until 2026-11-13 two on a step made its ratchet 2). nr: on * 16 + the rate (0 1/4 .. 7 1/32T).
 # black 2 (SD) = 0x8, black 3 (CP) = 0x20, white 7 = 0x800 (a first press only closes the opening)
 50 btn 8
 100 btn 11
@@ -45,7 +45,7 @@
 1190 btn 10
 1200 expect 22 nr
 # REC, playing from 1300 (steps every 125 ms): CP held 1500..1640 at 1/32 (62.5 ms from the key): hits ~1500 (-> step 3), ~1562
-# (step 3), ~1625 (-> step 4): step 3 with ratchet 2, step 4 on
+# (step 3), ~1625 (-> step 4): steps 3 and 4 on, no ratchet
 1250 btn 13
 1300 btn 12
 1500 keys 0x20
@@ -57,7 +57,7 @@
 1640 keys 0
 1690 expect 3 chhits 2
 1700 expect 1 step 0 2 2
-1710 expect 2 ratch 0 2 2
+1710 expect 1 ratch 0 2 2
 1720 expect 1 step 0 2 3
 1730 expect 1 ratch 0 2 3
 1740 expect 0 step 0 2 1

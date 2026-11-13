@@ -50,6 +50,8 @@ run "Drumtonic, FM-1: note repeat on SEQ: ARP, the black keys, the rate, REC (ex
 run "Drumtonic, FM-1: note repeat at 1/8, 1/8T, 1/4, 1/4T; its rate on knob 3 of SEQ (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_noterepeat_rate.txt
 run "Drumtonic, FM-1: note repeat owns the black keys: HOME / GLO + a black key repeat it; a key held when it goes on (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_noterepeat_keys.txt
 run "Drumtonic, FM-1: note repeat + REC on a part looping each repeat: no ratchet (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_noterepeat_loop.txt
+run "Drumtonic, FM-1: REC FREE keeps the micro timing (hand, MIDI); QUANT, SAVE, undo, GLO + QUANT (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_recfree.txt
+run "Drumtonic, FM-1: note repeat recorded with REC FREE keeps each hit's micro timing (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_recfree_nr.txt
 run "Drumtonic, FM-1: the state band leaves fields out, never overlaps (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_band.txt
 run "Drumtonic, FM-1: the knobs accelerate when spun, also on a slow main loop; TEMPO never (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_knob_accel.txt
 run "Drumtonic, FM-1: each pattern's kit, loaded as it starts, edits kept, revert, undo, SAVE (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_patkit.txt

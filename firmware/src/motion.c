@@ -27,6 +27,9 @@ static uint8_t mot_fill;                        /* main: SEL is held */
 static uint32_t mot_rng = 0x2545F491u, mot_step_age, mot_step_len = 1;   /* (ISR) steps' length in renders, for glides */
 static uint8_t mot_run, mot_pat = 0xFF;         /* (ISR) what the lanes were applied for */
 static uint8_t mot_send[DRUM_NCH][2];           /* (ISR) the sends as applied (fx_*) */
+static uint8_t mot_quant[SEQ_NPAT][DRUM_NCH];   /* main: QUANT, 0..100 %: how far each part's micro timing is pulled to
+                                                 * the grid as it plays (the lane keeps it as set); SAVE writes it into
+                                                 * the lanes and puts it back to 0 (mot_quant_apply), so it is never saved */
 
 static const drum_patch_t *volatile mot_prev;   /* main: a library sound heard on mot_prev_ch instead of its own (ui_fm1.c) */
 static volatile uint8_t mot_prev_ch;
@@ -140,6 +143,9 @@ static int mot_copy(uint32_t sp, uint32_t sc, uint32_t dp, uint32_t dc)
     uint32_t i, n = 0;
     int rc = 0;
     MOT_EACH(i, sp, sc) tmp[n++] = lanes[i];
+    if (sc >= DRUM_NCH) { if (sp != dp) memcpy(mot_quant[dp % SEQ_NPAT], mot_quant[sp % SEQ_NPAT], sizeof mot_quant[0]); }   /* (QUANT
+                                                 * goes with them; no memmove on the chip) */
+    else mot_quant[dp % SEQ_NPAT][dc % DRUM_NCH] = mot_quant[sp % SEQ_NPAT][sc % DRUM_NCH];
     mot_clear(dp, sc >= DRUM_NCH ? DRUM_NCH : dc);
     for (i = 0; i < n; i++) {
         int32_t k = mot_alloc(dp, sc >= DRUM_NCH ? tmp[i].ch : dc, tmp[i].param);
@@ -308,9 +314,33 @@ static uint32_t mot_cond_at(uint32_t pat, uint32_t ch, uint32_t st)   /* SEQ_CON
 {
     return mot_cond_val(mot_get(pat, ch, P_COND, st));
 }
-static int32_t mot_micro(uint32_t pat, uint32_t ch, uint32_t st)   /* SEQ_MICRO: 24ths of a step, + late, - early */
+static int32_t micro_q(int32_t m, uint32_t q)   /* m 24ths with QUANT q %: the timing played (rounded away from 0) */
 {
-    return micro_of(mot_get(pat, ch, P_MICRO, st));
+    int32_t t;
+    if (!q || !m) return m;
+    t = m * (int32_t)(100u - (q > 100u ? 100u : q));
+    return (t + (t < 0 ? -50 : 50)) / 100;
+}
+static int32_t mot_micro(uint32_t pat, uint32_t ch, uint32_t st)   /* SEQ_MICRO: 24ths of a step, + late, - early, as played */
+{
+    return micro_q(micro_of(mot_get(pat, ch, P_MICRO, st)), mot_quant[pat % SEQ_NPAT][ch % DRUM_NCH]);
+}
+static void mot_quant_apply(void)               /* SAVE: each part's QUANT into its micro timing, then QUANT 0 everywhere */
+{
+    uint32_t i, s;
+    for (i = 0; i < NLANE; i++) {
+        lane_t *l = &lanes[i];
+        uint32_t q;
+        if (!l->used || l->param != P_MICRO || l->pat >= SEQ_NPAT || l->ch >= DRUM_NCH) continue;
+        if (!(q = mot_quant[l->pat][l->ch])) continue;
+        for (s = 0; s < SEQ_NSTEP; s++)
+            if (l->val[s] != MOT_NONE) {
+                int32_t m = micro_q(micro_of(l->val[s]), q);
+                l->val[s] = m ? (uint8_t)((int32_t)MICRO0 + m) : MOT_NONE;
+            }
+        if (mot_lane_empty(l)) mot_free(i);
+    }
+    memset(mot_quant, 0, sizeof mot_quant);
 }
 static uint32_t ratch_of(uint32_t v) { return v >= 2u && v <= 4u ? v : 1u; }   /* a P_RATCH value: hits in the step */
 static uint32_t mot_ratch(uint32_t pat, uint32_t ch, uint32_t st)   /* SEQ_RATCH: the step's hits, 1..4 */

@@ -16,6 +16,10 @@
 #define SEQ_COND_AT(pat, ch, st) 1
 #define SEQ_LOCK_CH(pat, st, ch) ((void)0)
 #endif
+#ifndef SEQ_REC_MICRO                           /* a hit recorded (main, or note repeat's in main): its step and how far
+                                                 * from it it came, in 24ths (+ late, - early; -12..12) */
+#define SEQ_REC_MICRO(pat, ch, st, m) ((void)0)
+#endif
 #ifndef SEQ_RATCH                               /* ratchets: a step's hits, 1..4, evenly through it */
 #define SEQ_RATCH(pat, ch, st) 1u
 #endif
@@ -275,11 +279,9 @@ static void seq_peek(uint32_t pat, uint32_t st)  /* the step after st: seq_nx_pa
     }
 }
 
-static uint16_t seq_fires;                      /* (ISR: steps made since power on: which time round a step is) */
 static void seq_fire(uint32_t st)
 {
     uint32_t ch, pat = seq.pat, mute = seq.mute, solo = seq.solo;
-    seq_fires++;
     const seq_pat_t *p = &seq_song.p[pat];
     for (ch = 0; ch < DRUM_NCH; ch++) {         /* (a late hit not out yet: now, before the next step's) */
         if (seq_late[ch]) { seq_late[ch] = 0; seq_hit_n(ch, seq_late_vel[ch], 24u, seq_late_n[ch]); }
@@ -513,12 +515,19 @@ static uint32_t seq_nr_ph[DRUM_NCH];            /* (each one's phase since its l
 static volatile uint8_t seq_nr_rec;             /* main: REC on, playing (the next step's hit: that step skips it) */
 #define SEQ_NR_N 64u
 static volatile uint32_t seq_nr_ev[SEQ_NR_N];   /* ISR -> main: ch | the step nearest << 4 | its pattern << 10 | 0x8000
-                                                 * if it is the next step | that step's time round << 16 (seq_fires
-                                                 * when it plays, 15 bits: two hits on the same time round of a step) */
+                                                 * if it is the next step | its 24ths from that step + 16 << 16
+                                                 * (seq_frac_micro; until 2026-11-13 its time round, for the ratchets a
+                                                 * recording made then) */
 static volatile uint32_t seq_nr_w, seq_nr_r;    /* (r: main's; full: the ISR drops the hit's record, not main's place) */
+static int32_t seq_frac_micro(uint32_t f)       /* where in the step (frac) as 24ths from the step nearest: 0..12 after
+                                                 * this one (frac under 128), -12..-1 before the next one */
+{
+    return f < 128u ? (int32_t)((f * 24u + 127u) / 255u) : -(int32_t)(((255u - f) * 24u + 127u) / 255u);
+}
 static void seq_nr_hit(uint32_t ch)
 {
-    uint32_t pat = seq.pat, st = seq_pos[ch], nx = seq.run && seq.frac >= 128u, round = seq_fires + nx;
+    uint32_t pat = seq.pat, st = seq_pos[ch], f = seq.frac, nx = seq.run && f >= 128u;
+    int32_t m = seq.run ? seq_frac_micro(f) : 0;
     seq_out(ch, seq_nr_vel);                    /* (not the sequencer's: not in the beat repeat's history) */
     if (nx) {                                   /* (as seq_peek saw it at the step: the pattern after, a part's loop) */
         pat = seq_nx_pat;
@@ -526,7 +535,7 @@ static void seq_nr_hit(uint32_t ch)
         if (seq_nr_rec) seq_skip[ch] = (uint8_t)(st + 1u);   /* (heard now, not again) */
     }
     if (seq_nr_w - seq_nr_r >= SEQ_NR_N) return;
-    seq_nr_ev[seq_nr_w % SEQ_NR_N] = ch | st << 4 | pat % SEQ_NPAT << 10 | (nx ? 0x8000u : 0u) | (round & 0x7FFFu) << 16;
+    seq_nr_ev[seq_nr_w % SEQ_NR_N] = ch | st << 4 | pat % SEQ_NPAT << 10 | (nx ? 0x8000u : 0u) | (uint32_t)(m + 16) << 16;
     RING_PUBLISH();
     seq_nr_w++;
 }
@@ -588,16 +597,17 @@ static void seq_chain(const uint8_t *list, uint32_t n)
 
 static void seq_rec(uint32_t ch, uint32_t vel)
 {
-    uint32_t st, pat = seq.pat;
+    uint32_t st, pat = seq.pat, f = seq.frac;   /* (main: the frac the last render ended on, where this hit is made) */
     ch %= DRUM_NCH;
     st = seq_pos[ch];
-    if (seq.frac >= 128u) {                     /* nearer the next step: that one (in the pattern after, a part's loop:
+    if (f >= 128u) {                            /* nearer the next step: that one (in the pattern after, a part's loop:
                                                  * seq_peek's), and it must not sound again */
         pat = seq_nx_pat;
         st = seq_nx_pos[ch];
         seq_skip[ch] = (uint8_t)(st + 1u);
     }
     seq_set(pat, ch, st, vel > 110u ? STEP_ACC : STEP_ON);
+    SEQ_REC_MICRO(pat, ch, st, seq_frac_micro(f));
 }
 
 static int32_t seq_nr_take(void)                /* main: the next note repeat hit, as seq_nr_ev; -1: none */

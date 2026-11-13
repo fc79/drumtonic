@@ -18,8 +18,10 @@
 
 /* ---- the settings */
 #define SET_FMT 0xD3u                           /* (0xD2: 8 channels, before MT and HT) */
-static struct { uint8_t fmt, kit, bpm, pat, ch, ext, cpu_mode, rsv; } set = {SET_FMT, 0, 120, 0, 0, 0, 0, 0};   /* (cpu_mode:
-                                                 * SETTINGS > CPU MODE until 2026-11-12, now ignored: 2 x 320 MHz always) */
+static struct { uint8_t fmt, kit, bpm, pat, ch, ext, cpu_mode, rec_free; } set = {SET_FMT, 0, 120, 0, 0, 0, 0, 0};   /* (cpu_mode:
+                                                 * SETTINGS > CPU MODE until 2026-11-12, now ignored: 2 x 320 MHz always;
+                                                 * rec_free: SETTINGS > REC, 0 GRID, 1 FREE: a hit by hand recorded with
+                                                 * its micro timing; a spare byte before, 0 in older saves) */
 static uint8_t set_saved[sizeof set];           /* the settings as in the flash: SAVE writes them only if they differ */
 
 /* ---- the sound: the kit (drumtonic.c's kit) and kitx, the sends and the effects; the 8 kits */
@@ -306,9 +308,11 @@ static int song_unpack(const uint8_t *b, uint32_t n, uint32_t p)
     if (p >= SEQ_NPAT) {
         for (i = 0; i < SEQ_NPAT; i++) pat_unpack(&seq_song.p[i], b + 4, i, old, v2);
         memset(lanes, 0, sizeof lanes);
+        memset(mot_quant, 0, sizeof mot_quant);   /* (as saved: QUANT is never saved, SAVE puts it into the lanes) */
     } else {
         pat_unpack(&seq_song.p[p], b + 4, p, old, v2);
         mot_clear(p, DRUM_NCH);
+        memset(mot_quant[p], 0, sizeof mot_quant[0]);
     }
     for (i = 0; i < cnt; i++) {
         lane_t l;
@@ -403,7 +407,7 @@ static void track_clear(uint32_t pat, uint32_t ch)   /* ch DRUM_NCH: all the cha
 {
     uint32_t c;
     for (c = 0; c < DRUM_NCH; c++)
-        if (ch >= DRUM_NCH || c == ch) memset(&seq_song.p[pat].t[c], 0, sizeof(seq_track_t));
+        if (ch >= DRUM_NCH || c == ch) { memset(&seq_song.p[pat].t[c], 0, sizeof(seq_track_t)); mot_quant[pat][c] = 0; }
     mot_clear(pat, ch);
     lfo_clear_ch(pat, ch);
 }
@@ -515,6 +519,7 @@ static int save_all(void)                       /* SAVE: the sound and the kits 
     memcpy(kits[kit_cur].x, kitx, SND_NX);
     kits_used |= (uint8_t)(1u << kit_cur);
     kw_on = 0;
+    mot_quant_apply();                          /* (QUANT into the micro timing: what is heard is what is saved) */
     if (snd_save() || song_save()) { kw_on = on; return -1; }   /* (not written: the edits still SAVE's to do) */
     if (memcmp(set_saved, &set, sizeof set)) {
         if (settings_save(&set, sizeof set)) return -1;
@@ -590,6 +595,8 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
                                                                      * steps, ratchets, note repeat, beat repeat) */
     else if (IS("hitms")) *got = (int)seq_hit_ms[A(0) % DRUM_NCH];   /* channel: when its last hit was made, ms */
     else if (IS("micro")) *got = (int)mot_micro(A(0), A(1), A(2));      /* pattern channel step: 24ths, + late */
+    else if (IS("quant")) *got = mot_quant[A(0) % SEQ_NPAT][A(1) % DRUM_NCH];   /* pattern channel: QUANT % */
+    else if (IS("recfree")) *got = set.rec_free;                        /* SETTINGS > REC: 1 FREE */
     else if (IS("cklock")) *got = (int)ck_lock;                         /* clocks in a row the filter took (4: locked) */
     else if (IS("playstep")) *got = seq.step;
     else if (IS("send")) *got = A(1) ? drum_cfg[A(0) % DRUM_NCH].sdly : drum_cfg[A(0) % DRUM_NCH].srev;   /* channel 0 rev / 1 dly, Q15 */
@@ -635,6 +642,7 @@ static void app_main(void)
         set.ch > DRUM_NCH || set.kit >= NKIT)
         set.fmt = SET_FMT, set.kit = 0, set.bpm = 120, set.pat = 0, set.ch = 0, set.ext = 0, set.cpu_mode = 0;
     if (set.cpu_mode >= CPU_NMODE) set.cpu_mode = 0;
+    if (set.rec_free > 1u) set.rec_free = 0;
     snd_load();
     lib_load();
     song_load();

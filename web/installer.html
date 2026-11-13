@@ -64,6 +64,10 @@ details { background: var(--box); border-radius: 3px; }
 summary { cursor: pointer; padding: 10px 12px; font: 700 20px/1.2 var(--face); text-transform: uppercase; letter-spacing: .03em; }
 details ol { margin: 0; padding: 0 16px 14px 36px; color: var(--sec); display: grid; gap: 4px; }
 details ol b { color: var(--txt); }
+.note { background: var(--act); border-radius: 3px; padding: 12px; display: grid; gap: 6px; }
+.note h3 { margin: 0; font: 700 20px/1.2 var(--face); text-transform: uppercase; letter-spacing: .03em; }
+.panel a { color: var(--txt); text-underline-offset: 3px; white-space: nowrap; }
+.panel a:focus-visible { outline: 2px solid var(--txt); outline-offset: 2px; }
 .k { background: var(--act); border-radius: 3px; padding: 1px 6px; font-weight: 700; color: var(--txt); white-space: nowrap; }
 footer { color: var(--sec); font-size: 15px; }
 </style>
@@ -106,6 +110,7 @@ footer { color: var(--sec); font-size: 15px; }
 
 const PRODUCT = "@PRODUCT@", VERSION = "@VERSION@";
 const PKG_B64 = "@PKG_B64@";
+const BACKUP_LINK = `<a href="https://github.com/fc79/drumtonic/blob/main/docs/BACKUP.md" target="_blank" rel="noopener" aria-label="How to back up the FM-1 (opens in a new tab)">How to back up the FM-1 ↗</a>`;
 
 const $ = id => document.getElementById(id);
 const panel = $("panel");
@@ -143,7 +148,9 @@ function start() {
     status("err", "WEB MIDI NOT AVAILABLE");
     return;
   }
-  show(`<h2>Connect the FM-1</h2><p>Plug the FM-1 into this computer with a USB data cable and switch it on. The browser will ask to let this page use MIDI devices: allow it.</p><div class="btns"><button class="btn" id="go">Connect FM-1</button></div>`,
+  show(`<h2>Connect the FM-1</h2><p>Plug the FM-1 into this computer with a USB data cable and switch it on. The browser will ask to let this page use MIDI devices: allow it.</p>
+    <div class="note"><h3>Coming from the M-VAVE firmware? Back up first</h3><p>Installing replaces what is on the FM-1, and its memory also holds the unit's own key, which no package contains. This page cannot read that memory: make the backup with the command-line tools first.</p><p>${BACKUP_LINK}</p></div>
+    <div class="btns"><button class="btn" id="go">Connect FM-1</button></div>`,
        { go: connect });
   status("msg", "READY", "NOTHING CONNECTED");
 }
@@ -185,6 +192,7 @@ async function connect() {
   show(`<h2>${resume ? "Finish the install" : "Install Drumtonic"}</h2>
     <dl class="dev"><dt>On the FM-1</dt><dd>${esc(dev.id.text)}</dd><dt>Firmware</dt><dd>${esc(describe(dev.id))}</dd><dt>Port</dt><dd>${esc(dev.name)}</dd></dl>
     <p>${resume ? "An earlier install stopped before the end. The FM-1 is waiting for the rest of the firmware." : `This replaces it with <b>Drumtonic ${esc(VERSION)}</b>.`} It takes under a minute. <b>Do not unplug the FM-1 until it restarts.</b></p>
+    ${resume || dev.id.text === PRODUCT ? "" : `<p class="small">No backup yet? Press Cancel and make one first (this page cannot): ${BACKUP_LINK}</p>`}
     <div class="btns"><button class="btn" id="go">${resume ? "Finish install" : "Install Drumtonic"}</button><button class="btn quiet" id="no">Cancel</button></div>`,
     { go: install, no: start });
   status("", "CONNECTED", dev.id.text);

@@ -68,8 +68,8 @@ word is grey (`NOTHING` / `TO PASTE`).
   Let go, and the pattern is where it would have been. Beat repeat changes nothing in the pattern, and leaving
   HOME or stopping ends it. HOME + a white key still picks a pattern.
 
-HOME again opens **SETTINGS**: CLOCK, CLEAR PATTERN, FACTORY KITS, CPU (the load), VERSION, POWER. SELECT picks a
-row, SEL runs it.
+HOME again opens **SETTINGS**: CLOCK, REC, CLEAR PATTERN, FACTORY KITS, CPU (the load), VERSION, POWER. SELECT picks a
+row, SEL runs it. REC is GRID or FREE: how hits are recorded (see Playing by hand).
 
 ### SEQ: STEPS
 
@@ -81,7 +81,11 @@ row, SEL runs it.
 The 10 channels by 16 steps; OCT- and OCT+ show steps 17-64. The white keys are the chosen channel's steps.
 A tap turns a step on or off. An empty step turns on as you press it, so you can press, hold and turn in one go.
 
-- **Knobs**: RATE (1/16, 1/16T, 1/32, 1/8T), MICRO and REPEAT (note repeat's rate).
+- **Knobs**: RATE (1/16, 1/16T, 1/32, 1/8T), MICRO, REPEAT (note repeat's rate) and QUANT.
+- **QUANT** pulls the chosen channel's micro timing toward the grid as it plays (with ALL selected, every
+  channel's): 0 % plays it as recorded, 100 % on the grid. The steps keep their timing, so turning back gives it
+  back; the cells show what you hear, and MICRO with a step held shows the timing as recorded. GLO + QUANT puts it
+  back to 0 %. SAVE writes it into the steps and puts QUANT back to 0 %.
 - **Part length.** PRESETS sets the chosen part's length: 1, 2, 3, 4, 5, 6, 8, 12, 16, 24, 32 or 64 steps (with
   ALL selected, every part's). A longer length copies the steps, and going back gives the original. Parts of
   different lengths loop on their own, and the next pattern starts at the end of the longest part.
@@ -96,7 +100,8 @@ A tap turns a step on or off. An empty step turns on as you press it, so you can
 - **Note repeat.** A tap on ARP turns it on (`RPT 1/4` in the bottom band) and another turns it off; leaving SEQ
   turns it off too. While it is on, a black key repeats its channel while held: a hit at once, then evenly at the
   rate. The rates are 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32 and 1/32T, set with REPEAT or ARP held + white keys
-  1-8. With REC on, each hit is recorded on the nearest step, and several hits on one step become its ratchet.
+  1-8. With REC on, each hit is recorded on the nearest step, one hit a step (with REC on FREE, with its micro
+  timing).
 
 A lock, a condition, micro timing and a ratchet are all copied, pasted, cleared, undone and saved with the step.
 
@@ -171,7 +176,7 @@ that is always on. It does nothing under -0.2 dBFS and stops every peak at the c
 | --- | --- |
 | PLAY | play and stop |
 | REC | record: hits on white keys 1-10 (except on HOME) and knob moves |
-| SAVE | saves everything: the sound, the 8 kits and the 32 patterns. It works while playing too; the sound goes on |
+| SAVE | saves everything: the sound, the 8 kits and the 32 patterns, with QUANT written into the steps. It works while playing too; the sound goes on |
 | SEL | held: FILL. In a question: yes. In a list: run the row |
 | ARP | HOME: beat repeat. SEQ: note repeat. A step held: its ratchet |
 | MASTER | the volume |
@@ -189,10 +194,12 @@ passes and plays back gliding from step to step. Turned without REC, the knob ta
 
 **Playing by hand.** On SEQ and EDIT a black key plays its channel while stopped; while playing, only with REC
 on, and then the hit is recorded. With REC on, the white keys 1-10 are the channels (except on HOME). The keys
-have no velocity: a hit by hand plays at 100, and accents come from the steps.
+have no velocity: a hit by hand plays at 100, and accents come from the steps. A hit goes on the nearest step;
+with SETTINGS > REC on FREE it also keeps how early or late it came, up to half a step, as that step's micro timing
+(over what the step had). The same goes for notes over MIDI and for note repeat.
 
 **Undo.** HOME + OCT- goes back to before the last change, and HOME + OCT+ goes forward again. It covers the
-patterns, motion, p-locks, conditions, micro timing, LFOs, the sounds, the kit's sends and the effects. It does
+patterns, motion, p-locks, conditions, micro timing, QUANT, LFOs, the sounds, the kit's sends and the effects. It does
 not cover the tempo, mute, solo, SETTINGS, or what is already saved. A change is one button press, a knob or an
 encoder until 1 s without a click, the keys until 2 s without a tap, or one REC pass. Undo is kept in memory
 until power-off.

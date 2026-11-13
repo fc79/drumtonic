@@ -1,0 +1,27 @@
+# Drumtonic on the FM-1: note repeat recorded with REC FREE keeps each hit's micro timing (seq_nr_ev carries it). 60 BPM
+# (a step 250 ms), note repeat at 1/4T (knob 3: 1/4 -> 1/4T, a hit every 667 ms from the key). LT held from 1500 (step 2,
+# PLAY at 1000): hits at ~1500 (step 2, 0), ~2167 (step 5 is at 2250: 83 ms early, -8), ~2833 (step 7 at 2750: +8).
+# buttons: 3 SEL 8 HOME 10 ARP 11 SEQ 12 PLAY 13 REC; encoders: 0 SELECT 2-5 KNOB 1-4; LT: black 5 = key bit 13
+50 btn 8
+200 btn 8
+300 enc 0 1
+350 btn 3
+450 btn 8
+500 enc 2 -60
+650 btn 11
+700 enc 4 1
+750 btn 10
+800 btn 13
+1000 btn 12
+1500 keys 0x2000
+3000 keys 0
+3100 btn 13
+3200 expect 1 step 0 5 2
+3200 expect 1 step 0 5 5
+3200 expect 1 step 0 5 7
+3200 expect 0 step 0 5 6
+3210 expect 0 micro 0 5 2
+3210 expect -8 micro 0 5 5
+3210 expect 8 micro 0 5 7
+3210 expect 1 ratch 0 5 2
+3300 end

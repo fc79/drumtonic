@@ -120,10 +120,6 @@ static struct {
     uint8_t br_mode;                            /* beat repeat (HOME): ARP's tap turns it on, whites 1-4 then repeat */
     int8_t br_k;                                /* (repeating: its length, BR_LEN's, -1: not) */
     uint8_t br_w;                               /* (the white key holding it) */
-    uint32_t nr_st[DRUM_NCH];                   /* (REC: the step each channel's repeats last went on, its time round << 11
-                                                 * | its pattern << 6 | it, + 1: a part looping each repeat is a new
-                                                 * step each time, not a ratchet; */
-    uint8_t nr_n[DRUM_NCH];                     /*  how many there) */
     uint16_t nr_held, nr_new;                   /* (note repeat: the keys repeating at the last loop; pressed this loop) */
     uint32_t held_t;
     int8_t touched;
@@ -155,7 +151,7 @@ static uint32_t len_ch(void) { return one_ch() ? set.ch : DRUM_NCH; }   /* whose
 static uint32_t len_now(uint32_t pat) { return one_ch() ? track_len(pat, set.ch) : pat_len(pat); }
 
 /* ---- the knobs: what each page's banks hold */
-enum { R_NONE, R_PARAM, R_LEVEL, R_FX, R_TEMPO, R_SWING, R_RATE, R_LFO, R_MICRO, R_NREP };
+enum { R_NONE, R_PARAM, R_LEVEL, R_FX, R_TEMPO, R_SWING, R_RATE, R_LFO, R_MICRO, R_NREP, R_QUANT };
 typedef struct { uint8_t kind, a; } pref_t;
 typedef struct { const char *name; pref_t k[4]; } bank_t;
 #define PP(p) {R_PARAM, p}
@@ -164,8 +160,8 @@ typedef struct { const char *name; pref_t k[4]; } bank_t;
 static const bank_t BANK_LIVE[1] = {{"LIVE", {{R_TEMPO, 0}, {R_SWING, 0}, FXP(FX_M_RESO), FXP(FX_M_FILTER)}}};
 static const bank_t BANK_SET[1] = {{"SETTINGS", {NOK, NOK, NOK, NOK}}};
 static const bank_t BANK_MIX[1] = {{"MIX", {PP(P_LEVEL), PP(P_REV), PP(P_DLY), PP(P_PAN)}}};   /* the channel chosen */
-static const bank_t BANK_STEPS[1] = {{"STEPS", {{R_RATE, 0}, {R_MICRO, 0}, {R_NREP, 0}, NOK}}};   /* (MICRO: the step
-                                                 * held's; REPEAT: note repeat's rate, ARP) */
+static const bank_t BANK_STEPS[1] = {{"STEPS", {{R_RATE, 0}, {R_MICRO, 0}, {R_NREP, 0}, {R_QUANT, 0}}}};   /* (MICRO: the
+                                                 * step held's; REPEAT: note repeat's rate, ARP; QUANT: the part's) */
 #define NSOUND 8u
 #define B_LIB 7u                                /* SOUND's last bank: the library */
 static const bank_t BANK_SOUND[NSOUND] = {
@@ -216,6 +212,19 @@ static void micro_held_set(int32_t m)           /* the step held's micro timing 
     ui.held_used = 1;
 }
 
+static uint32_t quant_get(uint32_t pat)         /* QUANT: the channel's; ALL: the highest */
+{
+    uint32_t c, q = 0;
+    if (one_ch()) return mot_quant[pat % SEQ_NPAT][set.ch];
+    for (c = 0; c < DRUM_NCH; c++) if (mot_quant[pat % SEQ_NPAT][c] > q) q = mot_quant[pat % SEQ_NPAT][c];
+    return q;
+}
+static void quant_set(uint32_t pat, int32_t v)  /* QUANT to v %: the channel's; ALL: every channel's */
+{
+    uint32_t c;
+    v = v < 0 ? 0 : v > 100 ? 100 : v;
+    for (c = 0; c < DRUM_NCH; c++) if (!one_ch() || c == set.ch) mot_quant[pat % SEQ_NPAT][c] = (uint8_t)v;
+}
 static int32_t pref_get(const pref_t *r)
 {
     uint32_t ch = knob_ch(r) % DRUM_NCH, pat = cur_pat();
@@ -233,6 +242,7 @@ static int32_t pref_get(const pref_t *r)
     case R_LFO: return !l->used ? 0 : r->a == 0 ? l->rate : r->a == 1 ? l->shape : r->a == 2 ? l->depth : l->sync;
     case R_MICRO: return ui.held >= 0 && one_ch() ? micro_of(mot_get(pat, ch, P_MICRO, (uint32_t)ui.held)) : 0;
     case R_NREP: return ui.nr_rate;
+    case R_QUANT: return (int32_t)quant_get(pat);
     }
     return 0;
 }
@@ -247,6 +257,7 @@ static uint32_t pref_bar(const pref_t *r)       /* 0..127 for the bar under the 
     case R_NREP: return (uint32_t)v * 127u / (NR_N - 1u);
     case R_LFO: return r->a == 0 ? (uint32_t)v * 127u / 9u : r->a == 1 ? (uint32_t)v * 127u / 3u : r->a == 2 ? (uint32_t)(v + 100) * 127u / 200u : v ? 127u : 0u;
     case R_MICRO: return (uint32_t)(v + MICRO_MAX) * 127u / (2u * MICRO_MAX);
+    case R_QUANT: return (uint32_t)v * 127u / 100u;
     }
     return (uint32_t)v;
 }
@@ -264,6 +275,7 @@ static const char *pref_name(const pref_t *r)
     case R_LFO: return LFON[r->a & 3u];
     case R_MICRO: return "MICRO";
     case R_NREP: return "REPEAT";
+    case R_QUANT: return "QUANT";
     }
     return "";
 }
@@ -310,6 +322,7 @@ static void pref_text(char *s, const pref_t *r)
     case R_SWING: cat(catn(s, v), "%"); break;
     case R_RATE: cat(s, RATE_N[v % SEQ_NRATE]); break;
     case R_NREP: cat(s, NR_NAME[(uint32_t)v % NR_N]); break;
+    case R_QUANT: cat(catn(s, v), "%"); break;
     case R_LFO:
         if (!l->used) { cat(s, "-"); break; }
         if (r->a == 0) cat(s, (l->sync ? LFO_SYNC_N : LFO_HZ_N)[v % LFO_NRATE]);
@@ -333,6 +346,7 @@ static uint32_t knob_span(const pref_t *r)      /* the values a knob goes throug
     case R_LEVEL: return 128u;
     case R_FX: return is_switch(r) ? 0u : FX_P[r->a].max + 1u;
     case R_LFO: return r->a == 2u ? 128u : 0u;  /* (its depth) */
+    case R_QUANT: return 101u;
     default: return 0u;                         /* (TEMPO: a BPM a click, always; SWING, RATE, MICRO, REPEAT: few) */
     }
 }
@@ -422,6 +436,7 @@ static void pref_set(const pref_t *r, int32_t e)
         seq_song.p[pat].swing = (uint8_t)(v < 50 ? 50 : v > 75 ? 75 : v);
         return;
     case R_NREP: nr_set((int32_t)ui.nr_rate + (e > 0 ? 1 : -1)); return;
+    case R_QUANT: quant_set(pat, (int32_t)quant_get(pat) + e); return;
     case R_RATE:
         v = (int32_t)seq_song.p[pat].rate + (e > 0 ? 1 : -1);
         seq_song.p[pat].rate = (uint8_t)(v < 0 ? 0 : v >= (int32_t)SEQ_NRATE ? SEQ_NRATE - 1u : (uint32_t)v);
@@ -460,7 +475,8 @@ static void lfo_name(char *s, uint32_t pat, uint32_t k)   /* "BD PITCH" */
 }
 
 /* ---- note repeat (SEQ): ARP's tap turns it on; a black key held repeats its channel at the rate (knob 3, REPEAT; ARP
- * held + white 1-8 or a knob); with REC, each hit on the step nearest, two or more on a step its ratchet */
+ * held + white 1-8 or a knob); with REC, each hit on the step nearest (one hit a step: until 2026-11-13 two or more on a
+ * step made its ratchet, which a recording no longer does; a ratchet is set by hand, a step held + ARP) */
 /* ---- beat repeat (HOME): a tap on ARP turns it on (on until the next tap on HOME, other pages too); on, whites 1-4
  * repeat the slice in progress (1/4 .. 1/32) while held, whites 5-16 do nothing (HOME + a white: still a pattern).
  * Stopped: PLAY FIRST. Leaving HOME or stopping ends a repeat; it changes nothing in the pattern (seq_fm1.c
@@ -508,20 +524,24 @@ static void nr_pick(int32_t r)                  /* (a white key, ARP + a knob: t
     nr_set(r);
     big("RATE", NR_NAME[ui.nr_rate], 0);
 }
+static void rec_micro(uint32_t pat, uint32_t ch, uint32_t st, int32_t m)   /* a hit recorded, m 24ths from its step:
+                                                 * REC FREE keeps it as the step's micro timing (0: on the step), over
+                                                 * what it had; GRID leaves the step's as it was */
+{
+    if (!set.rec_free) return;
+    m = m > MICRO_MAX ? MICRO_MAX : m < -MICRO_MAX ? -MICRO_MAX : m;
+    if (mot_set(pat, ch, P_MICRO, st, m ? (uint32_t)((int32_t)MICRO0 + m) : MOT_NONE)) say("MOTION FULL");
+}
 static void nr_take(void)                       /* the repeats played: REC records them */
 {
     int32_t e;
     while ((e = seq_nr_take()) >= 0) {
-        uint32_t ch = (uint32_t)e & 15u, st = (uint32_t)e >> 4 & 63u, pat = (uint32_t)e >> 10 & 31u,
-                 key = ((uint32_t)e >> 16 << 11 | pat << 6 | st) + 1u;
+        uint32_t ch = (uint32_t)e & 15u, st = (uint32_t)e >> 4 & 63u, pat = (uint32_t)e >> 10 & 31u;
         if (ch >= DRUM_NCH) continue;
         hit_ms[ch] = fm1_ms;                    /* (its key's light, its meter) */
         if (!rec || !seq.run) continue;
         if (seq_get(pat, ch, st) == STEP_OFF) seq_set(pat, ch, st, STEP_ON);   /* (the next step's skip: the ISR's) */
-        if (ui.nr_st[ch] == key) {              /* again on the same step, the same time round: its ratchet */
-            if (ui.nr_n[ch] < 4u) ui.nr_n[ch]++;
-            if (mot_set(pat, ch, P_RATCH, st, ui.nr_n[ch])) say("MOTION FULL");
-        } else { ui.nr_st[ch] = key; ui.nr_n[ch] = 1; }
+        rec_micro(pat, ch, st, (int32_t)((uint32_t)e >> 16 & 31u) - 16);
     }
 }
 static void nr_keys(void)                       /* each loop: the channels repeating, the black keys held (not while a
@@ -531,11 +551,10 @@ static void nr_keys(void)                       /* each loop: the channels repea
     if (ui.view != V_STEPS) ui.nr_on = 0;       /* (off SEQ: off) */
     for (k = 0; ui.nr_on && !ui.ask && k < DRUM_NCH; k++) if (ui.keys >> BLACK[k] & 1u) m |= 1u << k;
     for (k = 0; k < DRUM_NCH; k++)
-        if ((m & ~(uint32_t)ui.nr_held & ~(uint32_t)ui.nr_new) >> k & 1u) { ui.nr_st[k] = 0; seq_nr_req[k]++; }
+        if ((m & ~(uint32_t)ui.nr_held & ~(uint32_t)ui.nr_new) >> k & 1u) seq_nr_req[k]++;
     ui.nr_held = (uint16_t)m;
     ui.nr_new = 0;
     seq_nr_rec = (uint8_t)(rec && seq.run);
-    if (!seq_nr_rec) memset(ui.nr_st, 0, sizeof ui.nr_st);   /* (REC off or stopped: the next pass counts afresh) */
     seq_nr_mask = (uint16_t)m;
     nr_take();
 }
@@ -564,6 +583,7 @@ static void knob_turn(uint32_t k, int32_t n)
         undo_begin("CLEAR");
         if (r->kind == R_LFO) { lfo_clear(pat, ui.lfo_sel); big_n("CLEAR", "LFO ", ui.lfo_sel + 1); return; }
         if (r->kind == R_MICRO) { if (ui.held >= 0 && one_ch()) { micro_held_set(0); big("CLEAR", "MICRO", 0); } return; }
+        if (r->kind == R_QUANT) { quant_set(pat, 0); big("CLEAR", "QUANT", 0); return; }
         if ((r->kind != R_PARAM && r->kind != R_LEVEL) || ch >= DRUM_NCH) return;
         if (ui.held >= 0) { mot_set(pat, ch, prm, (uint32_t)ui.held, MOT_NONE); ui.held_used = 1; big("CLEAR", "LOCK", 0); return; }
         if (mot_find(pat, ch, prm) >= 0) mot_free((uint32_t)mot_find(pat, ch, prm));
@@ -639,7 +659,7 @@ static void sel_channel(int32_t n)
     if (c < (int32_t)DRUM_NCH && !seq.run) hit((uint32_t)c, 100, 0, 0);   /* a channel chosen is heard, when stopped */
 }
 
-enum { ROW_CLOCK, ROW_CLEAR, ROW_FACTORY, ROW_CPU, ROW_VER, NROW };   /* (CPU MODE until 2026-11-12: 2 x 320 MHz always) */
+enum { ROW_CLOCK, ROW_REC, ROW_CLEAR, ROW_FACTORY, ROW_CPU, ROW_VER, NROW };   /* (CPU MODE until 2026-11-12: 2 x 320 MHz always) */
 static void list_value(int32_t d)               /* SETTINGS: ALGORITHM on the row */
 {
     if (ui.row == ROW_CLOCK) {
@@ -647,6 +667,7 @@ static void list_value(int32_t d)               /* SETTINGS: ALGORITHM on the ro
         set.ext = !set.ext;
         seq.ext = set.ext;
     }
+    if (ui.row == ROW_REC) set.rec_free = !set.rec_free;   /* GRID / FREE: a hit by hand with its micro timing */
     (void)d;
 }
 
@@ -1066,7 +1087,6 @@ static void black_down(uint32_t b)
                                                  * held: no solo, no paste); its first hit now, then while held */
         ui.btn_used |= (ui.btn & (1u << BTN_HOME | 1u << BTN_GLO));
         if (b != set.ch) { set.ch = (uint8_t)b; ui.held = -1; }
-        ui.nr_st[b] = 0;
         ui.nr_new |= (uint16_t)(1u << b);
         seq_nr_req[b]++;
         return;
@@ -1446,7 +1466,7 @@ static void draw_guide(uint32_t b)              /* the bubble's frame; a row a g
 static uint32_t list_full(void) { return list_view() && !ui.help && !ui.ask && guide_btn() < 0; }   /* the list over both bands */
 static void draw_set(void)
 {
-    static const char *const RN[NROW] = {"CLOCK", "CLEAR PATTERN", "FACTORY KITS", "CPU", "VERSION"};
+    static const char *const RN[NROW] = {"CLOCK", "REC", "CLEAR PATTERN", "FACTORY KITS", "CPU", "VERSION"};
     uint32_t k, half;
     char s[24];
     for (half = 0; half < 2u; half++) {
@@ -1459,6 +1479,7 @@ static void draw_set(void)
             tx(12, y + 3, &FONT_SB, RN[k], k == ui.row ? B_TXT : B_SEC, bg);
             s[0] = 0;
             if (k == ROW_CLOCK) cat(s, set.ext ? "EXT" : "INT");
+            else if (k == ROW_REC) cat(s, set.rec_free ? "FREE" : "GRID");
             else if (k == ROW_CPU) {            /* the load, and what runs now: cores x MHz */
                 char *p = cat(catn(s, (int32_t)ui.cpu), "%  ");
                 p = cat(catn(p, (int32_t)cpu_cores()), "x");
@@ -1614,8 +1635,7 @@ static void draw_mid_steps(void)
                                                  * white was 1.3..2.6:1): a lock or a condition, the top right half; micro
                                                  * timing, a bar at the bottom, left early, right late, and the step
                                                  * itself moved that way, 1..3 px */
-                uint32_t mv = mot_get(pat, c, P_MICRO, st);
-                int32_t q, m = mv == MOT_NONE ? 0 : micro_of(mv);
+                int32_t q, m = mot_micro(pat, c, st);   /* (as played: QUANT applied) */
                 int32_t mx = m ? m * 2 / MICRO_MAX + (m > 0 ? 1 : -1) : 0;
                 if (mx) {                       /* (redrawn moved: its place back to the empty step's) */
                     box(x, y + 1, 11, 10, B_BG);
@@ -1851,7 +1871,7 @@ static uint32_t mid_hash(uint32_t meters)      /* meters: the hits' meters too (
         for (k = 0; chain_making() && k < ui.chain_n; k++) h = hsh(h, ui.chain[k]);
         if (meters) for (c = 0; c < DRUM_NCH; c++) h = hsh(h, meter(c) / 6u);
         break;
-    case V_SET: h = hsh(h, ui.row * 16u + set.ext * 4u); h = hsh(h, ui.cpu * 4u + cpu_cores()); break;
+    case V_SET: h = hsh(h, ui.row * 16u + set.ext * 4u + set.rec_free * 2u); h = hsh(h, ui.cpu * 4u + cpu_cores()); break;
     case V_SOUND:
         h = hsh(h, ui.lib_row); h = hsh(h, (uint32_t)lib_user.used); h = hsh(h, (uint32_t)(lib_user.used >> 32));
         h = hsh(h, (uint32_t)kit.ch[set.ch % DRUM_NCH][0] << 8 | kit.ch[set.ch % DRUM_NCH][1]);
@@ -1869,8 +1889,10 @@ static uint32_t mid_hash(uint32_t meters)      /* meters: the hits' meters too (
         }
         for (k = 0; k < NLANE; k++) if (lanes[k].used && lanes[k].pat == pat) {
             h = hsh(h, k * 7u + lanes[k].ch);
-            if (lanes[k].param == P_RATCH) for (c = 0; c < SEQ_NSTEP; c++) h = hsh(h, lanes[k].val[c]);   /* (its marks) */
+            if (lanes[k].param == P_RATCH || lanes[k].param == P_MICRO)   /* (its marks; the cells moved) */
+                for (c = 0; c < SEQ_NSTEP; c++) h = hsh(h, lanes[k].val[c]);
         }
+        for (c = 0; c < DRUM_NCH; c++) h = hsh(h, mot_quant[pat][c]);
         break;
     case V_LFO: for (k = 0; k < NLFO; k++) { const lfo_t *l = &lfos[pat][k]; h = hsh(hsh(h, l->ch), l->used | l->param << 4 | l->rate << 10 | l->shape << 14 | l->sync << 16 | (uint32_t)(uint8_t)l->depth << 20); } h = hsh(h, ui.lfo_sel); break;
     }
