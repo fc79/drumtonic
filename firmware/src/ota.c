@@ -4,7 +4,8 @@
  *
  * The updater talks SysEx (F0 pack7(00 59 cmd len24 body chk) F7):
  *   cmd 0x11  handshake -> we answer our package identity (FELUCCA_ID); with OTA_FLASH_ID, bytes 24..26 the flash's
- *             JEDEC id (0: not read), as Felucca 1.8.2 (#320): installers read the identity as text up to its first 0
+ *             JEDEC id (0: not read), as Felucca 1.8.2 (#320): installers read the identity as text up to its first 0;
+ *             with OTA_VERSION, after that 0: 'V', the version as text, a 0 (only when it all fits before byte 24)
  *   F0 22 24 35 7F F7  upgrade -> ota_session(): pull parts of the package
  *     with cmd 0x30 read requests, check them, stage the package's update
  *     loader at 0xE0000 (outside Felucca's store; SMK: 0xBB000), ask 0xE0000000 ("success"),
@@ -154,6 +155,18 @@ static void ota_reply_identity(void)
     uint32_t i;
     for (i = 0; i < sizeof id; i++)
         id[i] = i < sizeof ID - 1u ? (uint8_t)ID[i] : 0;
+#endif
+#ifdef OTA_VERSION
+    {
+        const char *v = OTA_VERSION;
+        uint32_t at = 0u, n = 0u;
+        while (at < 24u && id[at]) at++;        /* the identity's 0 */
+        while (v[n]) n++;
+        if (at + 2u + n < 24u) {                /* 'V', the version, its 0: all before byte 24, or nothing */
+            id[at + 1u] = 'V';
+            for (i = 0; i < n; i++) id[at + 2u + i] = (uint8_t)v[i];
+        }
+    }
 #endif
 #ifdef OTA_FLASH_ID
     id[24] = (uint8_t)(OTA_FLASH_ID >> 16); id[25] = (uint8_t)(OTA_FLASH_ID >> 8); id[26] = (uint8_t)OTA_FLASH_ID;

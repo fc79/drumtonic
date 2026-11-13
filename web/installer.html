@@ -125,7 +125,10 @@ addEventListener("beforeunload", e => { if (busy) { e.preventDefault(); e.return
 
 function describe(id) {
   if (id.loader) return OWN_LOADER_RE.test(id.text) ? "Update loader: an install did not finish" : "Another firmware's update loader";
-  if (id.text === PRODUCT) return "Drumtonic, version unknown";
+  if (id.text === PRODUCT) {
+    if (!id.release) return "Drumtonic 0.1 or earlier";   /* (they did not send their version) */
+    return id.release === "0.0" ? "Drumtonic, a development build" : "Drumtonic " + id.release;
+  }
   if (modelOf(id.text) === "FM-1" && id.version < 100) return "M-VAVE firmware V" + id.version;
   return "Another firmware";
 }

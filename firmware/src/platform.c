@@ -177,6 +177,7 @@ static int st_read(uint32_t off, void *dst, uint32_t n)
 static uint8_t recovery_active;
 static uint32_t fl_jedec_id;                    /* the flash's JEDEC id, read at boot (0: not read): the handshake tells it */
 #define OTA_FLASH_ID fl_jedec_id
+#define OTA_VERSION APP_VER                     /* the handshake tells it too, after the identity (installers show it) */
 #if BOARD_SMK37
 #define OTA_IDENTITY (recovery_active ? SMK_MODEL "_000" : FELUCCA_ID)
 #else

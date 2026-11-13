@@ -64,15 +64,22 @@ export function parseRequest(pkt) {
     return { fl: u[6], addr: (u[7] | u[8] << 8 | u[9] << 16 | u[10] << 24) >>> 0, n: u[11] | u[12] << 8 | u[13] << 16 };
 }
 
-/** -> {text, model, version, loader} or null */
+/** -> {text, model, version, loader, release} or null. version: the identity's number; release: the firmware's own
+ *  version, which Drumtonic sends after the identity's 0 ('V', the text, a 0, before byte 24), else "" */
 export function parseIdentity(pkt) {
     if (pkt.length < 2 || pkt[0] !== 0xF0 || pkt[pkt.length - 1] !== 0xF7) return null;
     const d = unpack7(pkt.slice(1, -1));
     if (d.length !== 34 || d[0] !== 0 || d[1] !== 0x59 || d[2] !== 0x11) return null;
-    let text = "";
-    for (let i = 6; i < 33 && d[i]; i++) text += String.fromCharCode(d[i]);
+    let text = "", i = 6;
+    for (; i < 33 && d[i]; i++) text += String.fromCharCode(d[i]);
+    let release = "";
+    if (d[i + 1] === 0x56) {                    /* 'V' */
+        let j = i + 2, r = "";
+        for (; j < 30 && d[j] >= 0x20 && d[j] < 0x7F; j++) r += String.fromCharCode(d[j]);
+        if (j < 30 && d[j] === 0) release = r;
+    }
     const m = /^([^_]+)_(\d+)$/.exec(text);
-    return m ? { text, model: m[1], version: +m[2], loader: m[1].toLowerCase().startsWith("ota-") } : null;
+    return m ? { text, model: m[1], version: +m[2], loader: m[1].toLowerCase().startsWith("ota-"), release } : null;
 }
 
 export const modelOf = text => text.split("_")[0].replace(/^ota-/, "");

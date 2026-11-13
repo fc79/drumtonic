@@ -118,7 +118,7 @@ installed on the computer.
 
 ```sh
 python3 tools/fm1_install.py --info                            # what the FM-1 runs now
-python3 tools/fm1_install.py drumtonic-0.1.fwsc --yes          # the install
+python3 tools/fm1_install.py drumtonic-0.1.1.fwsc --yes        # the install
 ```
 
 The FM-1 then reports itself as `FM-1_923`, and the start-up screen shows the version.
@@ -139,8 +139,8 @@ tools/get_toolchain.sh                      # JieLi's clang for the chip, to ~/.
 git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
     https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
 ./build.sh                                  # -> build/drumtonic.fwsc
-./build.sh --board fm1 --release 0.1        # -> build/drumtonic-0.1.fwsc, "0.1" on the screen
-python3 tools/make_installer.py build/drumtonic-0.1.fwsc -o drumtonic-0.1-installer.html
+./build.sh --board fm1 --release 0.1.1      # -> build/drumtonic-0.1.1.fwsc, "0.1.1" on the screen
+python3 tools/make_installer.py build/drumtonic-0.1.1.fwsc -o drumtonic-0.1.1-installer.html
 ```
 
 The last line writes the browser installer as a single HTML file with the package inside. It works when opened
@@ -150,7 +150,7 @@ Without the instrument, the firmware also runs on a computer:
 
 ```sh
 tests/run_host.sh tests/scripts/drumtonic_fm1_tour.txt    # every page: screens as PNG, the sound as WAV (build/host/)
-tools/docs_screens.sh 0.1                                  # the screenshots on this page
+tools/docs_screens.sh 0.1.1                                # the screenshots on this page
 ./build.sh && sh tests/run_tests.sh                        # the whole test suite
 ```
 

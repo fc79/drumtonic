@@ -32,6 +32,7 @@ static int recovery_active;
 #endif
 #define T_AREA_HI (T_AREA + 0x5000u)
 #define OTA_IDENTITY (recovery_active ? T_RECOVERY : FELUCCA_ID)
+#define OTA_VERSION "0.7"                /* after the identity's 0: 'V', "0.7", 0 */
 
 static uint8_t nor[0x100000];
 static uint8_t *logical;
@@ -196,6 +197,8 @@ int main(int argc, char **argv)
         bad += check("handshake answered", ident_replies == 1);
         bad += check("identity frame is " FELUCCA_ID,
                      ota_msg[2] == 0x11 && !memcmp(ota_msg + 6, FELUCCA_ID, sizeof FELUCCA_ID - 1));
+        bad += check("the version after the identity's 0: V 0.7 0",
+                     !memcmp(ota_msg + 6, FELUCCA_ID "\0V0.7", sizeof FELUCCA_ID + 5));
         recovery_active = 1;
         host_reply(m, 7);
         ota_service();

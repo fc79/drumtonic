@@ -104,8 +104,9 @@ def parse_request(pkt):
 
 
 class Identity:
-    def __init__(self, text, model, version):
+    def __init__(self, text, model, version, release=""):
         self.text, self.model, self.version = text, model, version
+        self.release = release                  # the firmware's own version, when it sends one (Drumtonic)
 
     @property
     def loader(self):
@@ -120,7 +121,17 @@ def parse_identity(pkt):
         return None
     txt = d[6:33].split(b"\0")[0].decode("latin-1")
     m = re.fullmatch(r"([^_]+)_(\d+)", txt)
-    return Identity(txt, m[1], int(m[2])) if m else None
+    if not m:
+        return None
+    # after the identity's 0: 'V', the version, a 0, before byte 24 (Drumtonic; others send nothing there)
+    at = 6 + len(txt)
+    rest = d[at + 1:30]
+    release = ""
+    if rest[:1] == b"V" and b"\0" in rest[1:]:
+        r = rest[1:].split(b"\0")[0]
+        if all(0x20 <= c < 0x7F for c in r):
+            release = r.decode("ascii")
+    return Identity(txt, m[1], int(m[2]), release)
 
 
 # --------------------------------------------------------------- package ---
@@ -532,14 +543,15 @@ def run(a, backend, out, ask):
             raise not_found(up)
         dev.link.close()
         mode = "update loader (update not finished)" if dev.id.loader else "running"
-        print(f"{dev.id.text}  [{mode}]  port: {dev.name}", file=out)
+        ver = f"  version {dev.id.release}" if dev.id.release else ""
+        print(f"{dev.id.text}{ver}  [{mode}]  port: {dev.name}", file=out)
         return 0
     product, image = load_package(a.package, a.force)
     print(f"package: {product}  ({a.package})", file=out)
     dev = up.find()
     if not dev:
         raise not_found(up)
-    print(f"device:  {dev.id.text}  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
+    print(f"device:  {dev.id.text}" + (f" version {dev.id.release}" if dev.id.release else "") + f"  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
           file=out)
     if not a.yes and not ask("Install? Do not unplug the FM-1 while writing. [y/N] "):
         dev.link.close()

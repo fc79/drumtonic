@@ -128,6 +128,17 @@ const t0 = () => performance.now();
     ok(O.unpack7(O.pack7(data)).slice(0, data.length).every((x, i) => x === data[i]), "pack7 / unpack7 round trip");
     const r = O.parseRequest([0xF0, ...O.pack7((() => { const u = [0, 0x59, 0x30, 0, 0, 0, 1, 0x34, 0x12, 0, 0, 0, 2, 0]; u.push(~u.slice(6, 14).reduce((a, b) => a + b, 0) & 0xFF); return u; })()), 0xF7]);
     ok(r && r.addr === 0x1234 && r.n === 512 && r.fl === 1, "parseRequest: address, length, flags");
+    const idp = (b) => [0xF0, ...O.pack7([0, 0x59, 0x11, 0, 0, 0, ...b, ...new Array(28 - b.length).fill(0)]), 0xF7];
+    const bytes = t => Array.from(t, c => c.charCodeAt(0));
+    let id = O.parseIdentity(idp(bytes("FM-1_923\0V0.2")));
+    ok(id && id.text === "FM-1_923" && id.version === 923 && id.release === "0.2", "parseIdentity: the version after the identity");
+    id = O.parseIdentity(idp(bytes("FM-1_923")));
+    ok(id && id.text === "FM-1_923" && id.release === "", "parseIdentity: no version sent -> none");
+    const flash = bytes("FM-1_923"); flash.length = 24; flash.fill(0, 8); flash.push(0x85, 0x60, 0x14);
+    id = O.parseIdentity(idp(flash));
+    ok(id && id.release === "", "parseIdentity: the flash id at 24-26 is not a version");
+    id = O.parseIdentity(idp(bytes("FM-1_923\0V0.123456789012345")));
+    ok(id && id.text === "FM-1_923" && id.release === "", "parseIdentity: a version running into byte 24 -> none");
     ok(O.sameKeyboard("FM-1_015", "FM-1_923") && !O.sameKeyboard("SMK-37 Pro_923", "FM-1_923") && O.OWN_LOADER_RE.test("ota-FM-1_923")
        && !O.OWN_LOADER_RE.test("ota-FM-1_015"), "models and own loaders as in fm1_install.py");
 }
