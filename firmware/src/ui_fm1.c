@@ -52,13 +52,20 @@ static uint8_t key_role[UI_NKEY];               /* 0x10 | white index, 0x20 | bl
 #define B_SEC RGB(142, 145, 150)
 #define B_REC RGB(255, 46, 62)
 /* the three bands (FM1-INTERFACCIA.md): the knobs 0..73 (cells 58 x 64, the bank's dots at 68), the page 74..207 (its
- * content in the top 130 rows), the state band 208..239; SETTINGS and the library: one list over 0..207, in two strips */
+ * content in the top 136 rows), the state band 216..239; SETTINGS and the library: one list over 0..215, in two strips */
 #define TOP_H 74
 #define MID_Y 74
-#define MID_H 134
-#define BOT_Y 208
-#define BOT_H 32
-#define LIST_STRIP 104
+#define MID_H 142
+#define MID_C 136                               /* (the page's content: the top 136 rows of it) */
+#define BOT_Y 216
+#define BOT_H 24                                /* (32 until 2026-11-13, its text high with 11 rows empty under it; then
+                                                 * 26, the last row of SEQ against it) */
+#define BOT_TY 1                                /* (the state band's text: its capitals, 17 px, centred) */
+#define SR 14                                   /* STEPS: a row's pitch, a cell's height (13 and 10 until 2026-11-13) */
+#define SCH 12                                  /* (the user's choice of 11 and 12: 3 px over the state band) */
+#define LIST_STRIP (BOT_Y / 2)
+/* Text in a box: FONT_LB's capitals are 11 px from 2 under its y, FONT_SB's 12 px from 2 under (measured): centred in a
+ * box of height h at y, LB at y + (h - 11) / 2 - 2, SB at y + (h - 12) / 2 - 2 (2026-11-13: several were 2-8 px high) */
 
 #define B_LFO RGB(184, 255, 61)
 #define B_LOCK RGB(255, 176, 32)
@@ -651,8 +658,9 @@ static int32_t cond_val_pos(uint32_t c)
 
 static void sel_channel(int32_t n)
 {
-    int32_t c = (int32_t)set.ch + n;
-    c = c < 0 ? 0 : c > (int32_t)DRUM_NCH ? (int32_t)DRUM_NCH : c;
+    int32_t c = ((int32_t)set.ch + n) % (int32_t)(DRUM_NCH + 1u);   /* round: BD back to ALL, ALL on to BD (until
+                                                 * 2026-11-13 it stopped at both ends) */
+    if (c < 0) c += (int32_t)(DRUM_NCH + 1u);
     if ((uint32_t)c == set.ch) return;
     set.ch = (uint8_t)c;
     ui.held = -1;
@@ -1453,8 +1461,8 @@ static void draw_guide(uint32_t b)              /* the bubble's frame; a row a g
     n += guide_rows(b, r + n);
     if (n > max) n = max;
     for (k = 0; k < n; k++) { int32_t w = text_w(f, r[k].k); if (w > kw) kw = w; }
-    box(2, 0, 236, 130, B_TXT);
-    box(4, 2, 232, 126, B_ACT);
+    box(2, 0, 236, MID_C, B_TXT);
+    box(4, 2, 232, MID_C - 4, B_ACT);
     y = 2 + (int32_t)(124u - n * lh) / 2;       /* (the font's own space above the capitals: 2) */
     for (k = 0; k < n; k++, y += (int32_t)lh) {
         uint16_t c = b == BTN_GLO && ui.copied[0] && !k ? B_LOCK : B_TXT;
@@ -1476,7 +1484,7 @@ static void draw_set(void)
             int32_t y = 2 + (int32_t)k * 29;
             uint16_t bg = k == ui.row ? B_ACT : B_BOX;
             box(2, y, 236, 27, bg);
-            tx(12, y + 3, &FONT_SB, RN[k], k == ui.row ? B_TXT : B_SEC, bg);
+            tx(12, y + 5, &FONT_SB, RN[k], k == ui.row ? B_TXT : B_SEC, bg);
             s[0] = 0;
             if (k == ROW_CLOCK) cat(s, set.ext ? "EXT" : "INT");
             else if (k == ROW_REC) cat(s, set.rec_free ? "FREE" : "GRID");
@@ -1487,7 +1495,7 @@ static void draw_set(void)
             }
             else if (k == ROW_VER) cat(s, APP_VER);
             else cat(s, ">");
-            txr(228, y + 3, &FONT_SB, s, k == ui.row ? B_TXT : B_SEC, bg);
+            txr(228, y + 5, &FONT_SB, s, k == ui.row ? B_TXT : B_SEC, bg);
         }
         {                                       /* the supplies as set at power-on: to read, not a row to select */
             const uint32_t *v = cpu_power();
@@ -1497,8 +1505,8 @@ static void draw_set(void)
             p = cat(p, v[2] ? " DC  " : " LDO  ");
             cat(cat_v(p, v[3], 0u), "V");
             box(2, y, 236, 27, B_BOX);
-            tx(12, y + 3, &FONT_SB, "POWER", B_SEC, B_BOX);
-            txr(228, y + 3, &FONT_SB, s, B_SEC, B_BOX);
+            tx(12, y + 5, &FONT_SB, "POWER", B_SEC, B_BOX);
+            txr(228, y + 5, &FONT_SB, s, B_SEC, B_BOX);
         }
         cv_oy = 0;
         cv_blit(0, half * LIST_STRIP);
@@ -1525,22 +1533,22 @@ static int32_t huge_w(const char *s)
 static uint32_t big_bubble(void) { return fm1_ms < ui.big_until && !ui.help && !ui.ask && !list_view(); }
 static void draw_big_bubble(void)               /* big(): two words, big (as the knob's bubble) */
 {
-    box(2, 0, 236, 130, B_TXT);
-    box(4, 2, 232, 126, B_ACT);
-    txc(120, 6, &FONT_BIG, ui.big_l1, ui.big_grey ? B_SEC : B_TXT, B_ACT);
-    txc(120, 64, &FONT_BIG, ui.big_l2, B_TXT, B_ACT);
+    box(2, 0, 236, MID_C, B_TXT);
+    box(4, 2, 232, MID_C - 4, B_ACT);
+    txc(120, 9, &FONT_BIG, ui.big_l1, ui.big_grey ? B_SEC : B_TXT, B_ACT);
+    txc(120, 67, &FONT_BIG, ui.big_l2, B_TXT, B_ACT);
 }
 static void draw_bubble(const pref_t *r)        /* over the page: the knob's name and its value, as big as it fits, its bar */
 {
     char s[16];
     int32_t w, x;
-    box(2, 0, 236, 130, B_TXT);
-    box(4, 2, 232, 126, B_ACT);
-    txc(120, 4, &FONT_LB, pref_name(r), B_SEC, B_ACT);
+    box(2, 0, 236, MID_C, B_TXT);
+    box(4, 2, 232, MID_C - 4, B_ACT);
+    txc(120, 7, &FONT_LB, pref_name(r), B_SEC, B_ACT);
     pref_text(s, r);
     if (ui.view == V_FX && ui.bank[V_FX] % 5u == B_COMP) {   /* COMP: the value smaller, and the reduction as you turn */
         int32_t g10 = (int32_t)(ui.gr * 10.0f + 0.5f), gw = (int32_t)(ui.gr * 200.0f / 24.0f);   /* (the meter's 24 dB) */
-        txc(120, 20, &FONT_BIG, s, B_TXT, B_ACT);
+        txc(120, 23, &FONT_BIG, s, B_TXT, B_ACT);
         cv_rect(20, 78, 200, 6, B_TRACK);
         w = (int32_t)(pref_bar(r) * 200u / 127u);
         cv_rect(20, 78, w < 4 ? 4 : w, 6, bar_col(r));
@@ -1555,13 +1563,25 @@ static void draw_bubble(const pref_t *r)        /* over the page: the knob's nam
                                                  * name and the bar, 16 px from each (until 2026-11-11 at 16: a slash or a T
                                                  * touched the name, 22 px left under it) */
         const char *p;
-        for (x = 120 - w / 2, p = s; *p; p++) { char one[2] = {*p, 0}; x = tx(x, 27, huge_f(*p), one, B_TXT, B_ACT); }
+        for (x = 120 - w / 2, p = s; *p; p++) { char one[2] = {*p, 0}; x = tx(x, 30, huge_f(*p), one, B_TXT, B_ACT); }
     } else {
-        txc(120, 40, &FONT_BIG, s, B_TXT, B_ACT);
+        txc(120, 43, &FONT_BIG, s, B_TXT, B_ACT);
     }
     cv_rect(20, 110, 200, 6, B_TRACK);
     w = (int32_t)(pref_bar(r) * 200u / 127u);
     cv_rect(20, 110, w < 4 ? 4 : w, 6, bar_col(r));
+}
+#define SP_X 40                                 /* STEPS: which 16 steps are shown, over the grid's columns */
+#define SP_W 199
+static void steps_pages(uint32_t pat)           /* (a pattern longer than 16 steps) a segment for each 16 steps: the ones
+                                                 * shown white, the playhead's grey (playing), the others dark; the user's
+                                                 * choice of two, 2026-11-13 (the other: the whole pattern, a window) */
+{
+    uint32_t len = pat_len(pat), n = (len + 15u) / 16u, i, ph = seq.step / 16u;
+    for (i = 0; i < n; i++) {
+        int32_t x0 = SP_X + (int32_t)(SP_W * i / n), x1 = SP_X + (int32_t)(SP_W * (i + 1u) / n) - 3;
+        cv_rect(x0, 67, x1 - x0, 4, i == ui.spage ? B_TXT : seq.run && i == ph ? B_SEC : B_EMPTY);
+    }
 }
 static void draw_top(void)                      /* the 4 knobs, then the bank's dots */
 {
@@ -1592,6 +1612,7 @@ static void draw_top(void)                      /* the 4 knobs, then the bank's 
     }
     if (nb > 1u)
         for (k = 0; k < nb; k++) cv_rect(120 - (int32_t)(nb - 1u) * 5 + (int32_t)k * 10 - 2, 68, 4, 3, k == ui.bank[ui.view] % nb ? B_TXT : B_USED);
+    if (ui.view == V_STEPS && pat_len(pat) > 16u) steps_pages(pat);
     cv_blit(0, 0);
 }
 static uint32_t top_hash(void)
@@ -1602,6 +1623,8 @@ static uint32_t top_hash(void)
     h = hsh(h, (uint32_t)ui.held + 1u);
     h = hsh(h, ui.lfo_sel * 2u + list_full());
     h = hsh(h, (uint32_t)guide_btn() + 1u);
+    if (ui.view == V_STEPS)                     /* (which 16 steps: steps_pages) */
+        h = hsh(hsh(h, pat_len(pat) * 64u + ui.spage), seq.run ? seq.step / 16u + 1u : 0u);
     for (k = 0; k < 4u; k++) {
         const pref_t *r = &bk->k[k];
         h = hsh(h, (uint32_t)pref_get(r) + (uint32_t)r->kind * 1000u);
@@ -1620,17 +1643,18 @@ static void draw_mid_steps(void)
 {
     uint32_t c, s, pat = cur_pat(), base = ui.spage * 16u;
     for (c = 0; c < DRUM_NCH; c++) {
-        int32_t y = 1 + (int32_t)c * 13;          /* (10 rows of 13 in the 130 of the middle band) */
+        int32_t y = (int32_t)c * SR;              /* (10 rows of SR in the middle band, a gap under them) */
         uint32_t sel = set.ch == c;
         uint16_t bg = sel ? B_ACT : B_BG;
-        if (sel) box(0, y - 1, 240, 13, B_ACT);
-        tx(4, y - 4, &FONT_LB, kit.ch[c], sel ? chc(c) : (seq.mute >> c & 1u) ? B_REC : B_SEC, bg);
+        if (sel) box(0, y, 240, SR, B_ACT);
+        tx(4, y + 1 + (SCH - 11) / 2 - 2, &FONT_LB, kit.ch[c], sel ? chc(c) : (seq.mute >> c & 1u) ? B_REC : B_SEC, bg);   /* (its
+                                                 * capitals, 11 px from 2 under y, level with the cells) */
         for (s = 0; s < 16u; s++) {
             uint32_t st = base + s, tl = track_len(pat, c), v = st < tl ? seq_get(pat, c, st) : 0u;   /* (past its length: dark) */
             int32_t x = 40 + (int32_t)s * 25 / 2;
             uint16_t col = v == STEP_ACC ? B_TXT : v ? chc(c) : st >= tl ? B_OUT : s % 4u == 0u ? B_BEAT : B_EMPTY;
             if (seq.run && st == seq_pos[c] && !v && st < tl) col = B_HEAD;   /* (the playhead on an empty step) */
-            box(x, y + 1, 11, 10, col);
+            box(x, y + 1, 11, SCH, col);
             if (v) {                            /* the marks, black (7..18:1 on every channel's colour and on an accent;
                                                  * white was 1.3..2.6:1): a lock or a condition, the top right half; micro
                                                  * timing, a bar at the bottom, left early, right late, and the step
@@ -1638,20 +1662,20 @@ static void draw_mid_steps(void)
                 int32_t q, m = mot_micro(pat, c, st);   /* (as played: QUANT applied) */
                 int32_t mx = m ? m * 2 / MICRO_MAX + (m > 0 ? 1 : -1) : 0;
                 if (mx) {                       /* (redrawn moved: its place back to the empty step's) */
-                    box(x, y + 1, 11, 10, B_BG);
+                    box(x, y + 1, 11, SCH, B_BG);
                     x += mx;
-                    box(x, y + 1, 11, 10, col);
-                    cv_rect(x + (m < 0 ? 0 : 4), y + 8, 7, 3, B_BG);
+                    box(x, y + 1, 11, SCH, col);
+                    cv_rect(x + (m < 0 ? 0 : 4), y + SCH - 2, 7, 3, B_BG);
                 }
                 if (mot_lock_mark(pat, c, st))
                     for (q = 0; q < 7; q++) cv_rect(x + 4 + q, y + 1 + q, 7 - q, 1, B_BG);
                 if (mot_get(pat, c, P_RATCH, st) != MOT_NONE)   /* a ratchet: a black dot in the middle (how many: the
                                                  * bottom band with the step held; slices 1 px were not seen on the unit) */
-                    cv_rect(x + 4, y + 4, 3, 3, B_BG);
+                    cv_rect(x + 4, y + 1 + (SCH - 3) / 2, 3, 3, B_BG);
             }
             if (sel && ui.held == (int8_t)st) {
-                cv_rect(x - 1, y, 13, 1, B_TXT); cv_rect(x - 1, y + 11, 13, 1, B_TXT);
-                cv_rect(x - 1, y, 1, 12, B_TXT); cv_rect(x + 11, y, 1, 12, B_TXT);
+                cv_rect(x - 1, y, 13, 1, B_TXT); cv_rect(x - 1, y + SCH + 1, 13, 1, B_TXT);
+                cv_rect(x - 1, y, 1, SCH + 2, B_TXT); cv_rect(x + 11, y, 1, SCH + 2, B_TXT);
             }
         }
     }
@@ -1669,18 +1693,18 @@ static void draw_lib(void)                      /* the library's list over both 
         catn(cat(catn(s, (int32_t)ui.lib_row + 1), " / "), (int32_t)LIB_ROWS);
         txr(232, 2, &FONT_LB, s, B_SEC, B_BG);
         for (k = top; k < top + 9u; k++) {
-            int32_t y = 28 + (int32_t)(k - top) * 20;   /* (9 rows: down to 208) */
+            int32_t y = 30 + (int32_t)(k - top) * 20;   /* (9 rows: down to 210; the text centred, y + 2) */
             uint32_t on = k == ui.lib_row;
             uint16_t bg = on ? B_ACT : B_BG;
             const lib_snd_t *u = lib_user_at(k);
             if (on) box(0, y, 240, 20, B_ACT);
             if (k < SND_LIB_N) {
-                tx(8, y - 1, &FONT_LB, SND_LIB[k].name, on ? B_TXT : B_SEC, bg);
-                tx(44, y - 1, &FONT_LB, SND_LIB[k].label, on ? B_TXT : B_SEC, bg);
+                tx(8, y + 2, &FONT_LB, SND_LIB[k].name, on ? B_TXT : B_SEC, bg);
+                tx(44, y + 2, &FONT_LB, SND_LIB[k].label, on ? B_TXT : B_SEC, bg);
             } else {
-                tx(8, y - 1, &FONT_LB, u ? u->name : "-", u && on ? B_TXT : B_SEC, bg);   /* (text: B_SEC at least, 4.5:1) */
+                tx(8, y + 2, &FONT_LB, u ? u->name : "-", u && on ? B_TXT : B_SEC, bg);   /* (text: B_SEC at least, 4.5:1) */
                 cat(catn(cat(s, "USER "), (int32_t)(k - SND_LIB_N) + 1), u ? "" : "  EMPTY");
-                tx(44, y - 1, &FONT_LB, s, u ? B_LFO : B_SEC, bg);
+                tx(44, y + 2, &FONT_LB, s, u ? B_LFO : B_SEC, bg);
             }
         }
         cv_oy = 0;
@@ -1697,24 +1721,31 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
     if ((c = (uint32_t)guide_btn()) != ~0u) {   /* a button held: its guide */
         draw_guide(c);
     } else if (ui.ask) {
-        box(6, 21, 228, 88, B_ACT);
-        txc(120, 35, &FONT_SB, ui.ask_q, B_TXT, B_ACT);
-        txc(120, 71, &FONT_LB, "SEL YES   HOME NO", B_SEC, B_ACT);
+        box(6, 24, 228, 88, B_ACT);
+        txc(120, 38, &FONT_SB, ui.ask_q, B_TXT, B_ACT);
+        txc(120, 74, &FONT_LB, "SEL YES   HOME NO", B_SEC, B_ACT);
     } else switch (ui.view) {
     case V_LIVE:                                /* the pattern once, big: playing, next (blinking), the chain */
 #define LIVE_MY 55                              /* (the meters' top: under the next pattern's bar) */
 #define LIVE_CY 46                              /* (the chain being made: over the meters) */
+#define LIVE_BX 6                               /* where the pattern is: its bar, the screen's width */
+#define LIVE_BW 228
         catn(cat(s, "P"), (int32_t)seq.pat + 1);
         tx(6, -4, &FONT_P, s, B_TXT, B_BG);
-        if (seq.next != seq.pat) {              /* the next one, grey, steady (2026-11-12: it blinked), and a bar filling
-                                                 * up to when it starts */
-            uint32_t len = pat_len(seq.pat) ? pat_len(seq.pat) : 16u;
+        if (seq.next != seq.pat) {              /* the next one, grey, steady (2026-11-12: it blinked) */
             catn(cat(s, ">P"), (int32_t)seq.next + 1);
             tx(76, -4, &FONT_P, s, B_SEC, B_BG);
-            if (!chain_making()) {
-                box(76, 47, 160, 4, B_BOX);
-                cv_rect(76, 47, (int32_t)(160u * (seq.step + 1u < len ? seq.step + 1u : len) / len), 4, B_SEC);
-            }
+        }
+        if (seq.run && !chain_making()) {       /* where the pattern is (its longest part), the screen's width, cut every
+                                                 * 4 steps: grey, white with a next pattern waiting (it changes at the
+                                                 * end); stopped, none (until 2026-11-13: only with a next one waiting,
+                                                 * under it) */
+            uint32_t len = pat_len(seq.pat) ? pat_len(seq.pat) : 16u, st = seq.step + 1u < len ? seq.step + 1u : len, q;
+            uint16_t col = seq.next != seq.pat ? B_TXT : B_SEC;
+            box(LIVE_BX, 47, LIVE_BW, 4, B_BOX);
+            cv_rect(LIVE_BX, 47, (int32_t)((uint32_t)LIVE_BW * st / len), 4, col);
+            for (q = 4; q < len; q += 4)        /* (cut every 4 steps, wider every 16: the user's choice of two, 2026-11-13) */
+                cv_rect(LIVE_BX + (int32_t)((uint32_t)LIVE_BW * q / len), 47, q % 16u ? 1 : 2, 4, B_BG);
         }
         if (chain_making()) {                   /* (the second key held on: how the chain is growing, below) */
             cat(catn(cat(s, "CHAIN "), (int32_t)ui.chain_n), "/16");
@@ -1755,26 +1786,26 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
             int32_t x = 5 + (int32_t)c * 23;          /* (10 columns of 23) */
             uint32_t m = meter(c) * (124u - LIVE_MY - 22u) / 54u, muted = seq.mute >> c & 1u;
             uint16_t bg = c == set.ch ? B_ACT : B_BOX;
-            box(x, LIVE_MY, 21, 128 - LIVE_MY, bg);
-            if (m) cv_rect(x + 3, 124 - (int32_t)m, 15, (int32_t)m, chc(c));
-            if (muted) { cv_rect(x + 3, 121, 15, 3, B_REC); txc(x + 10, 94, &FONT_LB, "M", B_REC, bg); }   /* (the name stays) */
+            box(x, LIVE_MY, 21, MID_C - LIVE_MY, bg);
+            if (m) cv_rect(x + 3, MID_C - 4 - (int32_t)m, 15, (int32_t)m, chc(c));
+            if (muted) { cv_rect(x + 3, MID_C - 7, 15, 3, B_REC); txc(x + 10, 97, &FONT_LB, "M", B_REC, bg); }   /* (the name stays) */
             txc(x + 10, LIVE_MY, &FONT_LB, kit.ch[c], muted ? B_REC : c == set.ch ? chc(c) : B_SEC, bg);
         }
         break;
     case V_MIX:
         for (c = 0; c < DRUM_NCH; c++) {
-            int32_t x = 5 + (int32_t)c * 23, lv = kit.pat[c].p[P_LEVEL] * 70 / 127;   /* (10 columns of 23) */
+            int32_t x = 5 + (int32_t)c * 23, lv = kit.pat[c].p[P_LEVEL] * 76 / 127;   /* (10 columns of 23) */
             uint32_t cur = c == set.ch, m = meter(c);   /* (the knobs: the channel chosen: framed in its colour, */
             uint16_t bg = cur ? B_ACT : B_BOX;          /* its name dark on it) */
-            if (cur) box(x - 2, -2, 25, 100, chc(c));
-            box(x, 0, 21, 96, bg);
+            if (cur) box(x - 2, -2, 25, 106, chc(c));
+            box(x, 0, 21, 102, bg);
             if (cur) box(x, 0, 21, 18, chc(c));
-            cv_rect(x + 3, 92 - lv, 6, lv, (seq.mute >> c & 1u) ? B_TRACK : chc(c));
-            if (m) cv_rect(x + 11, 92 - (int32_t)m * 70 / 54, 7, (int32_t)m * 70 / 54, B_TXT);
+            cv_rect(x + 3, 98 - lv, 6, lv, (seq.mute >> c & 1u) ? B_TRACK : chc(c));
+            if (m) cv_rect(x + 11, 98 - (int32_t)m * 76 / 54, 7, (int32_t)m * 76 / 54, B_TXT);
             txc(x + 10, 0, &FONT_LB, kit.ch[c], cur ? B_INK : (seq.mute >> c & 1u) ? B_REC : B_SEC, cur ? chc(c) : bg);
         }
-        tx(6, 104, &FONT_LB, "KIT", B_SEC, B_BG);
-        for (k = 0; k < NKIT; k++) box(40 + (int32_t)k * 24, 102, 20, 20, k == kit_cur ? B_TXT : kits_used >> k & 1u ? B_USED : B_EMPTY);
+        tx(6, 113, &FONT_LB, "KIT", B_SEC, B_BG);
+        for (k = 0; k < NKIT; k++) box(40 + (int32_t)k * 24, 110, 20, 20, k == kit_cur ? B_TXT : kits_used >> k & 1u ? B_USED : B_EMPTY);
         break;
     case V_STEPS:
         draw_mid_steps();
@@ -1787,26 +1818,26 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
             tx(8, -4, &FONT_P, "ALL", B_TXT, B_BG);
         }
         for (k = 0; k < NSOUND; k++) {
-            int32_t x = 8 + (int32_t)(k % 4u) * 57, y = 56 + (int32_t)(k / 4u) * 38;
+            int32_t x = 8 + (int32_t)(k % 4u) * 57, y = 60 + (int32_t)(k / 4u) * 38;
             uint32_t on = k == ui.bank[V_SOUND] % NSOUND;
             box(x, y, 53, 32, on ? B_ACT : B_BOX);
-            txc(x + 26, y + 4, on ? &FONT_SB : &FONT_LB, BANK_SOUND[k].name, on ? B_TXT : B_SEC, on ? B_ACT : B_BOX);
+            txc(x + 26, y + 8, on ? &FONT_SB : &FONT_LB, BANK_SOUND[k].name, on ? B_TXT : B_SEC, on ? B_ACT : B_BOX);
         }
         break;
     case V_LFO:
         for (k = 0; k < NLFO; k++) {
             const lfo_t *l = &lfos[pat][k];
-            int32_t y = (int32_t)k * 16;              /* (8 rows of 16) */
+            int32_t y = (int32_t)k * 17;              /* (8 rows of 17; the text centred, y + 1) */
             uint16_t bg = k == ui.lfo_sel ? B_ACT : B_BG;
-            if (k == ui.lfo_sel) box(0, y, 240, 16, B_ACT);
+            if (k == ui.lfo_sel) box(0, y, 240, 17, B_ACT);
             catn(s, (int32_t)k + 1);
-            tx(6, y - 2, &FONT_LB, s, l->used ? B_LFO : B_SEC, bg);
-            if (!l->used) { tx(24, y - 2, &FONT_LB, k == ui.lfo_sel ? "EMPTY: HOLD LFO, TURN A KNOB" : "-", B_SEC, bg); continue; }
+            tx(6, y + 1, &FONT_LB, s, l->used ? B_LFO : B_SEC, bg);
+            if (!l->used) { tx(24, y + 1, &FONT_LB, k == ui.lfo_sel ? "EMPTY: HOLD LFO, TURN A KNOB" : "-", B_SEC, bg); continue; }
             s[0] = 0; lfo_name(s, pat, k);
-            tx(24, y - 2, &FONT_LB, s, B_TXT, bg);
+            tx(24, y + 1, &FONT_LB, s, B_TXT, bg);
             catn(cat(cat(cat(cat(cat(s, (l->sync ? LFO_SYNC_N : LFO_HZ_N)[l->rate % LFO_NRATE]), " "), LFO_SHAPE_N[l->shape & 3u]), " "),
                      l->depth > 0 ? "+" : ""), l->depth);
-            txr(234, y - 2, &FONT_LB, s, B_SEC, bg);
+            txr(234, y + 1, &FONT_LB, s, B_SEC, bg);
         }
         break;
     case V_FX:
@@ -1832,10 +1863,10 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
         }
         tx(8, -4, &FONT_P, bank_now()->name, B_TXT, B_BG);   /* the bank, then all five (the sends: MIX, EDIT) */
         for (k = 0; k < 5u; k++) {
-            int32_t x = 2 + (int32_t)(k % 3u) * 79, y = 56 + (int32_t)(k / 3u) * 38;
+            int32_t x = 2 + (int32_t)(k % 3u) * 79, y = 60 + (int32_t)(k / 3u) * 38;
             uint32_t on = k == ui.bank[V_FX] % 5u;
             box(x, y, 77, 34, on ? B_ACT : B_BOX);
-            txc(x + 38, y + 5, on ? &FONT_SB : &FONT_LB, BANK_FX[k].name, on ? B_TXT : B_SEC, on ? B_ACT : B_BOX);
+            txc(x + 38, y + 9, on ? &FONT_SB : &FONT_LB, BANK_FX[k].name, on ? B_TXT : B_SEC, on ? B_ACT : B_BOX);
         }
         break;
     }
@@ -1865,7 +1896,7 @@ static uint32_t mid_hash(uint32_t meters)      /* meters: the hits' meters too (
         if (meters) h = hsh(h, (uint32_t)(ui.gr * 2.0f));
         break;
     case V_LIVE:
-        h = hsh(h, seq.next * 64u + ((seq.next != seq.pat) ? seq.step : 0u));   /* (the next one's bar) */
+        h = hsh(h, seq.next * 64u + (seq.run ? seq.step + 1u : 0u));   /* (where the pattern is: its bar) */
         h = hsh(h, seq.chain_n * 32u + seq.chain_at);
         h = hsh(h, chain_making() ? ui.chain_n : 0u);
         for (k = 0; chain_making() && k < ui.chain_n; k++) h = hsh(h, ui.chain[k]);
@@ -1925,13 +1956,13 @@ static void draw_bot(void)                      /* the state band */
     else cat(l, "ALL");
     cv_begin(240, BOT_H, B_BG);
     box(0, 0, 240, BOT_H, band);
-    x = tx(6, 0, &FONT_ST, l, B_INK, band);
+    x = tx(6, BOT_TY, &FONT_ST, l, B_INK, band);
     if (fm1_ms >= msg_until && ui.held < 0 && !ui.fill) {
         const char *pg = ui.view == V_SOUND || ui.view == V_FX || ui.view == V_MIX ? bank_now()->name : VIEWS[ui.view].name;
         char rp[16];
         if (ui.nr_on) { cat(cat(rp, "RPT "), NR_NAME[ui.nr_rate]); pg = rp; }
         if (ui.view == V_LIVE && ui.br_mode) pg = "REPEAT";
-        x = tx(x + 10, 0, &FONT_ST, pg, B_INK, band);
+        x = tx(x + 10, BOT_TY, &FONT_ST, pg, B_INK, band);
     }
     if (fm1_ms >= msg_until) {
         uint32_t drop;
@@ -1952,8 +1983,8 @@ static void draw_bot(void)                      /* the state band */
         {
             int32_t w = text_w(f, r);
             bot_drop = (uint8_t)drop; bot_ok = x + 10 + (seq.run && ui.view != V_LIVE ? 14 : 0) + w <= 234;
-            txr(234, f == &FONT_ST ? 0 : 4, f, r, B_INK, band);
-            if (seq.run && ui.view != V_LIVE) play_icon(w ? 222 - w : 224, 8, B_INK);
+            txr(234, (f == &FONT_ST ? 0 : 3) + BOT_TY, f, r, B_INK, band);
+            if (seq.run && ui.view != V_LIVE) play_icon(w ? 222 - w : 224, (BOT_H - 15) / 2, B_INK);   /* (15 px: centred) */
         }
     }
     cv_blit(0, BOT_Y);
@@ -2110,8 +2141,11 @@ static void ui_leds(void)
     if (ui.view == V_STEPS || (ui.view == V_SOUND && one_ch()) || ui.view == V_LIVE) want_glow(BTN_ARP, 1);   /* ARP: dim where it does
                                                  * something, lit: note repeat on, a beat repeat */
     want(BTN_ARP, ui.nr_on || (ui.view == V_LIVE && ui.br_mode) || (ui.btn >> BTN_ARP & 1u));
-    if (ui.view == V_LIVE || ui.view == V_STEPS || ui.view == V_SOUND || ui.view == V_FX) { want_glow(BTN_OCT_DOWN, 1); want_glow(BTN_OCT_UP, 1); }
-    want(BTN_OCT_UP, (ui.view == V_LIVE && ui.pbank) || (ui.view == V_STEPS && ui.spage));
+    if (ui.view == V_LIVE || ui.view == V_SOUND || ui.view == V_FX) { want_glow(BTN_OCT_DOWN, 1); want_glow(BTN_OCT_UP, 1); }
+    want(BTN_OCT_UP, (ui.view == V_LIVE && ui.pbank) ||   /* STEPS: OCT+ lit with steps after the 16 shown, OCT- with steps
+                                                 * before, off otherwise (until 2026-11-13: both dim always) */
+                     (ui.view == V_STEPS && (ui.spage + 1u) * 16u < pat_len(cur_pat())));
+    if (ui.view == V_STEPS) want(BTN_OCT_DOWN, ui.spage > 0u);
     if (home && !ui.ask) {                      /* HOME held: lit; OCT- / OCT+ dim if there is something to undo / redo */
         want(BTN_HOME, 1);
         want(BTN_OCT_DOWN, 0); want_glow(BTN_OCT_DOWN, undo.back >= 0);

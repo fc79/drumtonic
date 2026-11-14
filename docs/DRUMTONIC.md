@@ -33,7 +33,7 @@ word is grey (`NOTHING` / `TO PASTE`).
    light the same way everywhere: bright when the channel plays, dim when silent, dark when muted. The chosen
    channel blinks while stopped. While playing, it stays lit and dips on each hit; the white keys show the playhead
    the same way. Black key 11 held with white keys sets the channel's accents.
-4. **The three encoders on the left** work on every page. SELECT picks the channel (1-10, then ALL). On SEQ,
+4. **The three encoders on the left** work on every page. SELECT picks the channel (1-10, then ALL, and round again to 1). On SEQ,
    PRESETS sets the part's length and ALGORITHM shifts its steps. In a list, SELECT picks the row and ALGORITHM sets
    the value.
 5. **Hold a step and turn.** On SOUND, a knob locks that step's value (a p-lock). ALGORITHM sets its condition.
@@ -54,8 +54,9 @@ word is grey (`NOTHING` / `TO PASTE`).
 **LIVE** is the page to play from.
 
 - **Patterns.** The white keys pick the pattern (OCT- and OCT+ switch between 1-16 and 17-32). While playing,
-  the next pattern starts at the end of the bar: `>P2` waits at the top, grey, with a bar filling up to the
-  change.
+  the next pattern starts at the end of the pattern: `>P2` waits at the top, grey.
+- **Where the pattern is.** While it plays, a bar across the screen fills up with the pattern, cut every 4 steps
+  (a wider cut every 16). It is grey, and white while a next pattern waits: it changes when the bar is full.
 - **Chains.** Hold a pattern key and tap others: a chain, played in that order.
 - **Mute.** The black keys mute the channels (LIVE is the only page where they do).
 - **Knobs**: TEMPO, SWING, and the master filter's RESO and FILTER.
@@ -78,7 +79,9 @@ row, SEL runs it. REC is GRID or FREE: how hits are recorded (see Playing by han
 <img src="screens/step-held.png" width="240" alt="A step held: condition and micro timing">
 </p>
 
-The 10 channels by 16 steps; OCT- and OCT+ show steps 17-64. The white keys are the chosen channel's steps.
+The 10 channels by 16 steps; OCT- and OCT+ show steps 17-64. With a pattern longer than 16 steps, a row of
+segments over the grid shows its parts of 16: the one on screen white, the one playing grey. OCT+ is lit while there
+are steps after the ones shown, OCT- while there are steps before. The white keys are the chosen channel's steps.
 A tap turns a step on or off. An empty step turns on as you press it, so you can press, hold and turn in one go.
 
 - **Knobs**: RATE (1/16, 1/16T, 1/32, 1/8T), MICRO, REPEAT (note repeat's rate) and QUANT.

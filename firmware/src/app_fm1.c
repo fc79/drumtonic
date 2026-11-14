@@ -562,6 +562,8 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("view")) *got = ui.view;                                /* V_LIVE 0, SET, MIX, STEPS, SOUND, LFO, FX */
     else if (IS("bank")) *got = ui.bank[ui.view] % VIEWS[ui.view].n;
     else if (IS("ch")) *got = set.ch;
+    else if (IS("spage")) *got = ui.spage;                              /* STEPS: which 16 steps are shown (0: 1-16) */
+    else if (IS("led")) *got = (int)(led_on >> A(0) & 1u) + 2 * (int)(led_glow >> A(0) & 1u);   /* button: 1 lit, 2 dim */
     else if (IS("mute")) *got = seq.mute;
     else if (IS("solo")) *got = seq.solo;
     else if (IS("fill")) *got = mot_fill;

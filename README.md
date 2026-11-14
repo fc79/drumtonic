@@ -40,7 +40,7 @@ buttons. [More below](#install).
 ### Sequencer: 32 patterns, up to 64 steps
 
 - **32 patterns** of 10 parts. Each part has its own length, from 1 to 64 steps, so you can loop a 3-step hat
-  against a 16-step kick.
+  against a 16-step kick. Past 16 steps, segments over the grid show which 16 are on screen and which are playing.
 - **Rate and swing**: 1/16, 1/16T, 1/32 or 1/8T, and swing from 50 to 75 %.
 - **Hold a step and turn a knob**. That step gets a **p-lock** of that sound value, a **condition** (a chance from
   5 to 95 %, FILL, NOT FILL, or a cycle from 1:2 to 8:8), **micro timing** (up to 23/24 of a step early or late)
@@ -54,12 +54,14 @@ buttons. [More below](#install).
   just as easily. SAVE makes it final.
 - **Chains**: hold a pattern key and tap others to play them in that order. The next pattern always starts at the
   end of the bar.
+- **Where the pattern is**: on LIVE a bar across the screen fills up with the pattern, cut every 4 steps. It turns
+  white while the next pattern waits.
 - **Each pattern has its own kit**, effects included, and it loads as the pattern starts.
 - **Mute, solo, FILL, copy, paste, clear**, and **undo and redo** of the last change.
 
 <p align="center">
 <img src="docs/screens/step-held.png" width="240" alt="A step held: its condition, 95 %, and its micro timing, +6/24">
-<img src="docs/screens/live-next.png" width="240" alt="LIVE: the next pattern waiting, its bar filling up to the change">
+<img src="docs/screens/live-next.png" width="240" alt="LIVE: the next pattern waiting, the bar of where the pattern is, white up to the change">
 <img src="docs/screens/lfo.png" width="240" alt="LFO: the pattern's 8 LFOs, one on the open hat's modulation">
 </p>
 
@@ -121,7 +123,7 @@ installed on the computer.
 
 ```sh
 python3 tools/fm1_install.py --info                            # what the FM-1 runs now
-python3 tools/fm1_install.py drumtonic-0.2.2.fwsc --yes        # the install
+python3 tools/fm1_install.py drumtonic-0.2.3.fwsc --yes        # the install
 ```
 
 The FM-1 then reports itself as `FM-1_987`, and the start-up screen shows the version.
@@ -142,8 +144,8 @@ tools/get_toolchain.sh                      # JieLi's clang for the chip, to ~/.
 git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
     https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
 ./build.sh                                  # -> build/drumtonic.fwsc
-./build.sh --board fm1 --release 0.2.2      # -> build/drumtonic-0.2.2.fwsc, "0.2.2" on the screen
-python3 tools/make_installer.py build/drumtonic-0.2.2.fwsc -o drumtonic-0.2.2-installer.html
+./build.sh --board fm1 --release 0.2.3      # -> build/drumtonic-0.2.3.fwsc, "0.2.3" on the screen
+python3 tools/make_installer.py build/drumtonic-0.2.3.fwsc -o drumtonic-0.2.3-installer.html
 ```
 
 The last line writes the browser installer as a single HTML file with the package inside. It works when opened
@@ -153,7 +155,7 @@ Without the instrument, the firmware also runs on a computer:
 
 ```sh
 tests/run_host.sh tests/scripts/drumtonic_fm1_tour.txt    # every page: screens as PNG, the sound as WAV (build/host/)
-tools/docs_screens.sh 0.2.2                                # the screenshots on this page
+tools/docs_screens.sh 0.2.3                                # the screenshots on this page
 ./build.sh && sh tests/run_tests.sh                        # the whole test suite
 ```
 

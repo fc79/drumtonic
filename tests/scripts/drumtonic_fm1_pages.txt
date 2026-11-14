@@ -1,0 +1,37 @@
+# Drumtonic on the FM-1: SEQ with a pattern longer than 16 steps. OCT+ is lit while there are steps after the 16
+# shown, OCT- while there are steps before; with 16 or fewer both are off (until 2026-11-13 both were dim always, and
+# OCT+ lit from the second 16 on). SELECT goes round: BD back to ALL, ALL on to BD. (The segments over the grid:
+# shots.) led: 1 lit, 2 dim. buttons: 0 OCT- 1 OCT+ 8 HOME 11 SEQ 12 PLAY; encoders: 0 SELECT 6 PRESETS
+50 btn 8
+200 btn 11
+300 expect 0 led 0
+300 expect 0 led 1
+400 enc 6 1
+450 enc 6 1
+500 enc 6 1
+550 expect 64 len 0
+600 expect 0 led 0
+600 expect 1 led 1
+650 btn 1
+700 expect 1 spage
+700 expect 1 led 0
+700 expect 1 led 1
+750 shot
+800 btn 1
+850 btn 1
+900 expect 3 spage
+900 expect 1 led 0
+900 expect 0 led 1
+1000 btn 1
+1050 expect 3 spage
+1100 btn 12
+1500 shot
+1600 btn 12
+1700 expect 0 ch
+1750 enc 0 -1
+1800 expect 10 ch
+1850 enc 0 1
+1900 expect 0 ch
+1950 enc 0 -2
+2000 expect 9 ch
+2100 end
