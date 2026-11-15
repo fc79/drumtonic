@@ -49,7 +49,7 @@ jobs:
           BOARD=smk37 MODEL=mke sh build.sh
           sh build.sh
 
-      - name: Host tests (with the emulator's: web/emu, Docker and Node)
+      - name: Host tests, with the emulator's (web/emu, Docker and Node)
         run: sh tests/run_tests.sh
 
       # A release carries the FM-1 package only (the SMK-37 builds above are for the tests)
