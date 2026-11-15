@@ -6,7 +6,7 @@
 #   sh tests/run_tests.sh
 # The FM-1 app on the host (tests/run_host.sh), MIDI and the SMK-37 on the host (tests/scripts), the flash map, the
 # update path (ota.c, the loader, tools/fm1_install.py; from the fm1-to-smk37 kit's reference layer,
-# genkigenki/sloop-fm1 smk37) and the packages.
+# genkigenki/sloop-fm1 smk37), the packages, the web installer and its emulator (web/emu: Docker, as ./build.sh).
 set -e
 export AC79_SDK="${AC79_SDK:-$HOME/fw-AC79_AIoT_SDK}"   # (fm1pkg_make.py: the SDK files of a package)
 cd "$(dirname "$0")/.."
@@ -110,7 +110,9 @@ done
 run "installer (tools/fm1_install.py): FM-1 and SMK-37, install and the update-mode resume check the model" python3 tests/install_test.py
 if command -v node >/dev/null; then
     run "web installer (web/fm1ota.js) on a fake MIDIAccess: install, resume, refusals, a pulled cable, the package" node web/test_web.mjs build/drumtonic.fwsc
-    run "web installer page: build/drumtonic-installer.html from build/drumtonic.fwsc" python3 tools/make_installer.py
+    run "web emulator: the firmware as WebAssembly (web/emu/build.sh, in Docker)" sh web/emu/build.sh
+    run "web emulator: the FM-1 scripts play the same sound as on the host, bit for bit" node web/emu/test_emu.mjs
+    run "web installer page: build/drumtonic-installer.html from build/drumtonic.fwsc, the emulator in its TRY tab" python3 tools/make_installer.py
 else echo "(web installer tests skipped: no node)"; fi
 
 [ "$fail" = 0 ] && echo "ALL TESTS PASSED" || echo "SOME TESTS FAILED"

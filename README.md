@@ -19,6 +19,10 @@ on the instrument itself, with no computer and no samples, and plays through its
 [Drumtonic installer](https://fc79.github.io/drumtonic/) in Chrome or Edge, plug in the FM-1 and press two
 buttons. [More below](#install).
 
+**Or try it first, without an FM-1**: the same page's [Try](https://fc79.github.io/drumtonic/#try) tab plays
+Drumtonic in the browser, the real firmware on a drawn FM-1, with the computer's keyboard, the mouse or a MIDI
+controller.
+
 ## What it does
 
 ### Sound: ten channels, synthesized
@@ -123,7 +127,7 @@ installed on the computer.
 
 ```sh
 python3 tools/fm1_install.py --info                            # what the FM-1 runs now
-python3 tools/fm1_install.py drumtonic-0.2.3.fwsc --yes        # the install
+python3 tools/fm1_install.py drumtonic-0.2.4.fwsc --yes        # the install
 ```
 
 The FM-1 then reports itself as `FM-1_987`, and the start-up screen shows the version.
@@ -144,18 +148,21 @@ tools/get_toolchain.sh                      # JieLi's clang for the chip, to ~/.
 git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
     https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
 ./build.sh                                  # -> build/drumtonic.fwsc
-./build.sh --board fm1 --release 0.2.3      # -> build/drumtonic-0.2.3.fwsc, "0.2.3" on the screen
-python3 tools/make_installer.py build/drumtonic-0.2.3.fwsc -o drumtonic-0.2.3-installer.html
+./build.sh --board fm1 --release 0.2.4      # -> build/drumtonic-0.2.4.fwsc, "0.2.4" on the screen
+web/emu/build.sh 0.2.4                      # the Try tab's emulator (Docker) -> build/emu/drumtonic-emu.wasm
+python3 tools/make_installer.py build/drumtonic-0.2.4.fwsc -o drumtonic-0.2.4-installer.html
 ```
 
-The last line writes the browser installer as a single HTML file with the package inside. It works when opened
-from disk, so you can also share it as a file.
+The last line writes the browser installer as a single HTML file with the package and the emulator inside. It
+works when opened from disk, so you can also share it as a file. The emulator is the same firmware compiled to
+WebAssembly with Emscripten, in Emscripten's Docker image on any system (Podman works as `docker` here too).
 
 Without the instrument, the firmware also runs on a computer:
 
 ```sh
 tests/run_host.sh tests/scripts/drumtonic_fm1_tour.txt    # every page: screens as PNG, the sound as WAV (build/host/)
 tools/docs_screens.sh 0.2.3                                # the screenshots on this page
+tools/emu.sh                                               # this checkout's firmware in the browser's emulator
 ./build.sh && sh tests/run_tests.sh                        # the whole test suite
 ```
 

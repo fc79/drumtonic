@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Drumtonic Installer</title>
 <!-- SPDX-License-Identifier: GPL-3.0-only. The template of build/drumtonic-installer.html: tools/make_installer.py
-     fills in the package, its version and web/fm1pkg.js + web/fm1ota.js. The layout follows the FM-1 screen
-     (FM1-INTERFACCIA.md): 4 step boxes on top, the page in the middle, a status band below. -->
+     fills in the package, its version, web/fm1pkg.js + web/fm1ota.js and the emulator (web/emu/make_page.py's fill).
+     Two tabs: TRY plays the same firmware in the browser (web/emu: the FM-1 panel), INSTALL (the default, #install)
+     puts it on an FM-1, its layout after the FM-1 screen (FM1-INTERFACCIA.md): 4 step boxes on top, the page in the
+     middle, a status band below. #try opens on TRY. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&display=swap">
@@ -23,13 +25,22 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--txt); font: 500 19px/1.4 var(--face); font-variant-numeric: tabular-nums; }
-.page { max-width: 640px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
+.page { max-width: 1100px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
 .page > * { min-width: 0; }
 header { display: grid; gap: 2px; }
 .tag { color: var(--sec); font-size: 15px; letter-spacing: .08em; text-transform: uppercase; }
 h1 { margin: 0; font: 700 clamp(48px, 12vw, 76px)/.92 var(--face); text-transform: uppercase; }
 .pkg { color: var(--sec); }
 .pkg b { color: var(--txt); }
+.tabs { display: flex; gap: 3px; }
+.tab { font: 700 22px/1 var(--face); text-transform: uppercase; letter-spacing: .03em; border: 0; border-radius: 3px; padding: 12px 22px 10px;
+  cursor: pointer; background: var(--box); color: var(--sec); min-height: 46px; display: grid; gap: 2px; text-align: left; }
+.tab small { font: 500 15px/1 var(--face); text-transform: none; letter-spacing: 0; }
+.tab[aria-selected="true"] { background: var(--go); color: var(--ink); }
+.tab:focus-visible { outline: 2px solid var(--txt); outline-offset: 2px; }
+.col { max-width: 640px; display: grid; gap: 20px; min-width: 0; }
+.col > * { min-width: 0; }
+[hidden] { display: none !important; }
 .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
 .steps div { background: var(--box); border-radius: 3px; padding: 7px 8px 6px; display: grid; color: var(--sec); min-width: 0; }
 .steps b { font: 700 18px/1.1 var(--face); letter-spacing: .03em; }
@@ -75,10 +86,20 @@ footer { color: var(--sec); font-size: 15px; }
 <body>
 <div class="page">
   <header>
-    <div class="tag">Firmware installer for the M-VAVE FM-1</div>
+    <div class="tag">Firmware for the M-VAVE FM-1</div>
     <h1>Drumtonic</h1>
-    <div class="pkg">Installs <b>Drumtonic @VERSION@</b> · identity <b>@PRODUCT@</b> · @SIZE@ KB</div>
+    <div class="pkg" id="pkg-install">Installs <b>Drumtonic @VERSION@</b> · identity <b>@PRODUCT@</b> · @SIZE@ KB</div>
+    <div class="pkg" id="pkg-try" hidden>Plays <b>Drumtonic @VERSION@</b> here · no FM-1 needed · keyboard, mouse or a MIDI controller</div>
   </header>
+
+  <div class="tabs" role="tablist" aria-label="Drumtonic">
+    <button class="tab" role="tab" id="t-try" aria-controls="p-try" type="button">Try<small>in this browser</small></button>
+    <button class="tab" role="tab" id="t-install" aria-controls="p-install" type="button">Install<small>on your FM-1</small></button>
+  </div>
+
+  <section id="p-try" role="tabpanel" aria-labelledby="t-try" hidden><div id="emu"></div></section>
+
+  <section id="p-install" role="tabpanel" aria-labelledby="t-install" class="col">
 
   <div class="steps" aria-label="Install steps">
     <div id="s0"><b>CONNECT</b><span>find the FM-1</span></div>
@@ -100,11 +121,42 @@ footer { color: var(--sec); font-size: 15px; }
       <li>Press <b>Connect FM-1</b> above and install again.</li>
     </ol>
   </details>
+  </section>
 
-  <footer>Works in Chrome or Edge on a computer. Use a USB data cable and close other music apps that might hold the FM-1's MIDI port. Drumtonic is GPL-3.0 firmware based on Dinghy. Package sha256 @SHA@…</footer>
+  <footer>Installing works in Chrome or Edge on a computer; trying, in any current browser on a computer. Use a USB data cable and close other music apps that might hold the FM-1's MIDI port. Drumtonic is GPL-3.0 firmware based on Dinghy. Package sha256 @SHA@…</footer>
 </div>
 
+<script>const EMU_WASM = "@EMU_WASM@"; const EMU_WORKLET = @EMU_WORKLET@;</script>
 <script type="module">
+/*@EMU_CODE@*/
+/* the tabs: INSTALL by default (the README and the hub link this page to install), TRY with #try */
+let emuPanel = null;
+function tab(name, focus) {
+  const tr = name === "try";
+  for (const [t, p, on] of [["t-try", "p-try", tr], ["t-install", "p-install", !tr]]) {
+    document.getElementById(t).setAttribute("aria-selected", on); document.getElementById(t).tabIndex = on ? 0 : -1;
+    document.getElementById(p).hidden = !on;
+  }
+  document.getElementById("pkg-try").hidden = !tr; document.getElementById("pkg-install").hidden = tr;
+  if (focus) document.getElementById(tr ? "t-try" : "t-install").focus();
+  try { history.replaceState(null, "", tr ? "#try" : "#install"); } catch (e) {}
+  if (tr && !emuPanel) {
+    try { emuPanel = mountEmu(document.getElementById("emu"), { wasm: EMU_WASM, worklet: EMU_WORKLET }); }
+    catch (e) { document.getElementById("emu").textContent = "The emulator could not load in this browser: " + e.message; }
+  }
+  if (emuPanel) tr ? emuPanel.resume() : emuPanel.pause();   /* (the sound stops while installing) */
+}
+document.getElementById("t-try").onclick = () => tab("try");
+document.getElementById("t-install").onclick = () => tab("install");
+document.querySelector(".tabs").addEventListener("keydown", e => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+  e.preventDefault();
+  const tr = e.key === "Home" || (e.key !== "End" && document.getElementById("t-try").getAttribute("aria-selected") !== "true");
+  tab(tr ? "try" : "install", true);
+});
+tab(location.hash === "#try" ? "try" : "install");
+addEventListener("hashchange", () => tab(location.hash === "#try" ? "try" : "install"));
+
 /*@FM1PKG@*/
 /*@FM1OTA@*/
 

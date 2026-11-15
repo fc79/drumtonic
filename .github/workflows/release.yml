@@ -3,7 +3,8 @@
 # The JieLi toolchain comes from pkgman.jieliapp.com (tools/get_toolchain.sh), the AC79 SDK from gitee.com, as in
 # sloopDX's and OberVave's workflows. Run by hand (workflow_dispatch) for a test build without a release.
 # On a tag the FM-1 release also becomes the browser installer: a file of the release, and GitHub Pages (public
-# repository only).
+# repository only). The installer's Try tab carries the emulator: the same firmware as WebAssembly (web/emu/build.sh,
+# in Emscripten's Docker image, which the runner has).
 name: release
 
 on:
@@ -48,7 +49,7 @@ jobs:
           BOARD=smk37 MODEL=mke sh build.sh
           sh build.sh
 
-      - name: Host tests
+      - name: Host tests (with the emulator's: web/emu, Docker and Node)
         run: sh tests/run_tests.sh
 
       # A release carries the FM-1 package only (the SMK-37 builds above are for the tests)
@@ -75,11 +76,13 @@ jobs:
           subject-path: build/drumtonic-[0-9]*.fwsc
 
       # The browser installer of the FM-1 release: a file of the release and, as index.html, the GitHub Pages site. A
-      # page needs a public repository (or a paid plan): a private one builds it but does not publish it.
+      # page needs a public repository (or a paid plan): a private one builds it but does not publish it. Its Try tab's
+      # emulator is built again with the release's version, which its screen shows.
       - name: Installer (tags only)
         if: github.ref_type == 'tag'
         run: |
           V="${GITHUB_REF_NAME#v}"
+          sh web/emu/build.sh "$V"
           python3 tools/make_installer.py build/drumtonic-"$V".fwsc -o build/drumtonic-"$V"-installer.html
           mkdir -p site
           cp build/drumtonic-"$V"-installer.html site/index.html

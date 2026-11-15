@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Build the Drumtonic web installer: one HTML file with the FM-1 package inside.
+"""Build the Drumtonic web installer: one HTML file with the FM-1 package inside, and the emulator (the TRY tab).
 
   tools/make_installer.py [PACKAGE] [-o OUT]       (defaults: build/drumtonic.fwsc, build/drumtonic-installer.html)
   tools/make_installer.py build/drumtonic-0.1.fwsc -o build/drumtonic-0.1-installer.html   (a release: "0.1 (commit)")
 
 web/installer.html is the page; web/fm1pkg.js and web/fm1ota.js (the same files web/test_web.mjs tests) are inlined
-into it, their `export` words dropped. The package is checked first with tools/fm1_install.py's own checks
+into it, their `export` words dropped. The TRY tab's emulator, build/emu/drumtonic-emu.wasm (web/emu/build.sh, with the
+same version) and web/emu's scripts, goes in through web/emu/make_page.py's fill(). The package is checked first with tools/fm1_install.py's own checks
 (identity FM-1_987, the Felucca loader marker, the files' CRCs): a bad package makes no installer. The version shown
 is the last commit that touched firmware/ (with "+changes" when firmware/ has uncommitted edits), and the page
 prints the package's sha256 so a copy can be matched to its build. Open the result in Chrome or Edge: it needs Web
-MIDI with SysEx, nothing else, no network but the font."""
+MIDI with SysEx, nothing else, no network but the font (the TRY tab: any current browser)."""
 import argparse
 import base64
 import hashlib
@@ -22,6 +23,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import fm1_install as I  # noqa: E402
+sys.path.insert(0, str(ROOT / "web/emu"))
+import make_page  # noqa: E402
 
 PRODUCT = "FM-1_987"
 
@@ -41,6 +44,11 @@ def version(package):
     return f"{m[1]} ({v})" if m else v
 
 
+def newer_than_emu(emu):
+    """what the emulator is built from"""
+    return [p for p in (ROOT / "firmware").rglob("*") if p.is_file()] + [ROOT / "web/emu/host_web.c"]
+
+
 def module(path):
     """a web/ module as plain script text: no import lines, no export words"""
     src = path.read_text()
@@ -52,6 +60,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("package", nargs="?", default=str(ROOT / "build/drumtonic.fwsc"))
     ap.add_argument("-o", "--out", default=str(ROOT / "build/drumtonic-installer.html"))
+    ap.add_argument("--emu", default=str(ROOT / "build/emu/drumtonic-emu.wasm"), help="the emulator (web/emu/build.sh)")
     a = ap.parse_args(argv)
     try:
         product, _ = I.load_package(a.package, False)
@@ -67,8 +76,13 @@ def main(argv=None):
         print(f"make_installer: {a.package} is older than firmware/ ({newer[0].relative_to(ROOT)}...): build it "
               "first (./build.sh --board fm1), so the version on the page is the one inside", file=sys.stderr)
         return 2
+    emu = Path(a.emu)
+    if not emu.exists() or any(p.stat().st_mtime > emu.stat().st_mtime for p in newer_than_emu(emu)):
+        print(f"make_installer: {emu} is missing or older than firmware/ or web/emu/host_web.c: build it first "
+              "(web/emu/build.sh VERSION), so the TRY tab plays the firmware the page installs", file=sys.stderr)
+        return 2
     raw = Path(a.package).read_bytes()
-    page = (ROOT / "web/installer.html").read_text()
+    page = make_page.fill((ROOT / "web/installer.html").read_text(), emu)
     fill = {"/*@FM1PKG@*/": module(ROOT / "web/fm1pkg.js"), "/*@FM1OTA@*/": module(ROOT / "web/fm1ota.js"),
             "@PKG_B64@": base64.b64encode(raw).decode(), "@VERSION@": version(a.package), "@PRODUCT@": PRODUCT,
             "@SIZE@": str(round(len(raw) / 1024)), "@SHA@": hashlib.sha256(raw).hexdigest()[:12]}

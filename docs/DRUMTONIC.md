@@ -243,6 +243,11 @@ install a working package from it.
 
 ## On a computer
 
+The installer page's **Try** tab plays Drumtonic in the browser, without an FM-1: the same firmware, on a drawn
+panel. Play it with the mouse (Shift and click holds a button down), the computer's keyboard (the keys are written
+under each control) or a MIDI controller. Point at a control to read what it does. What you save is kept until the
+page closes.
+
 `tests/run_host.sh tests/scripts/drumtonic_fm1_tour.txt` runs the firmware on the computer and writes the screens
 and the sound to `build/host/`. `tools/docs_screens.sh` makes the screenshots of these pages, and
 `tests/run_tests.sh` runs the whole test suite.
