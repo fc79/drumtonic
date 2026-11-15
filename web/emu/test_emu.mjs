@@ -14,8 +14,9 @@ if (!existsSync(WASM)) { console.log(`no ${WASM}: run web/emu/build.sh first`); 
 const bytes = readFileSync(WASM);
 const tmp = mkdtempSync(join(tmpdir(), "emu-test-"));
 const host = join(tmp, "dinghy");
-// the reference: tests/run_host.sh's build
-execFileSync("cc", ["-O2", "-Wall", "-Wno-unused-function", "-DDINGHY_HOST", '-DAPP_VER="0.0"',
+// the reference: tests/run_host.sh's build, without fused multiply-adds: WebAssembly has none, and a compiler that
+// targets a CPU with them (gcc on Ubuntu 26.04's runners) fuses fx.c's float maths, which changes the last bits
+execFileSync("cc", ["-O2", "-ffp-contract=off", "-Wall", "-Wno-unused-function", "-DDINGHY_HOST", '-DAPP_VER="0.0"',
     "-Ifirmware/hal", "-Ifirmware/src", "-Ifirmware/gen", "-o", host, "firmware/src/dinghy.c"], { stdio: "inherit" });
 
 // tests/host.c's SCRIPT0 (no script file), as a script
