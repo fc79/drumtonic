@@ -2,6 +2,7 @@
   "what": "A drum machine for the FM-1: ten synthesized drum channels, 32 patterns of up to 64 steps with p-locks, conditions, micro timing and ratchets, free recording with QUANT, beat repeat, 8 LFOs per pattern, reverb, tape delay and a master compressor. No samples, no computer needed.",
   "author": "Federico Ciapi",
   "kinds": ["drums"],
+  "play": "https://fc79.github.io/drumtonic/#try",
   "cheat": "https://github.com/fc79/drumtonic/blob/main/docs/DRUMTONIC.md",
   "image": "docs/card.png",
   "color": "#FF6B4A"
