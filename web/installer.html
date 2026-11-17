@@ -6,9 +6,11 @@
 <title>Drumtonic Installer</title>
 <!-- SPDX-License-Identifier: GPL-3.0-only. The template of build/drumtonic-installer.html: tools/make_installer.py
      fills in the package, its version, web/fm1pkg.js + web/fm1ota.js and the emulator (web/emu/make_page.py's fill).
-     Two tabs: TRY plays the same firmware in the browser (web/emu: the FM-1 panel), INSTALL (the default, #install)
+     Three tabs: TRY plays the same firmware in the browser (web/emu: the FM-1 panel), INSTALL (the default, #install)
      puts it on an FM-1, its layout after the FM-1 screen (FM1-INTERFACCIA.md): 4 step boxes on top, the page in the
-     middle, a status band below. #try opens on TRY. -->
+     middle, a status band below; BACKUP (#backup) saves Drumtonic's saves into a .dtbak file or puts one back (the
+     same file as tools/fm1_install.py --backup), in the same layout: first a choice, then its steps. #try opens on
+     TRY. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&display=swap">
@@ -60,6 +62,19 @@ h1 { margin: 0; font: 700 clamp(48px, 12vw, 76px)/.92 var(--face); text-transfor
 .btn { font: 700 22px/1 var(--face); text-transform: uppercase; letter-spacing: .03em; border: 0; border-radius: 3px; padding: 14px 20px 12px; cursor: pointer; background: var(--go); color: var(--ink); min-height: 48px; }
 .btn.quiet { background: var(--act); color: var(--txt); }
 .btn:disabled { opacity: .5; cursor: progress; }
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }
+.choice { background: var(--act); border-radius: 3px; padding: 14px; display: grid; gap: 10px; align-content: space-between; }
+.choice > div:first-child { display: grid; gap: 6px; }
+.choice h3 { margin: 0; font: 700 26px/1.05 var(--face); text-transform: uppercase; }
+.choice .btn.quiet { background: var(--empty); }
+.dev dd .none { color: var(--sec); font-weight: 500; }
+.warn { background: var(--act); border-left: 4px solid var(--txt); border-radius: 3px; padding: 10px 12px; display: grid; gap: 4px; }
+.warn b { font: 700 20px/1.2 var(--face); text-transform: uppercase; letter-spacing: .03em; }
+.warn span { color: var(--sec); }
+.say { color: var(--txt) !important; font-size: 24px; line-height: 1.25; }
+.panel h2:focus { outline: none; }
+#bsteps b { overflow-wrap: anywhere; }
+@media (max-width: 480px) { #bsteps span { display: none; } #bsteps b { font-size: 15px; } }
 .btn:focus-visible, summary:focus-visible { outline: 2px solid var(--txt); outline-offset: 2px; }
 .bar { height: 22px; background: var(--empty); border-radius: 3px; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--go); border-radius: 3px; transition: width .2s linear; }
@@ -75,6 +90,8 @@ details { background: var(--box); border-radius: 3px; }
 summary { cursor: pointer; padding: 10px 12px; font: 700 20px/1.2 var(--face); text-transform: uppercase; letter-spacing: .03em; }
 details ol { margin: 0; padding: 0 16px 14px 36px; color: var(--sec); display: grid; gap: 4px; }
 details ol b { color: var(--txt); }
+details a { color: var(--txt); text-underline-offset: 3px; }
+details a:focus-visible { outline: 2px solid var(--txt); outline-offset: 2px; }
 .note { background: var(--act); border-radius: 3px; padding: 12px; display: grid; gap: 6px; }
 .note h3 { margin: 0; font: 700 20px/1.2 var(--face); text-transform: uppercase; letter-spacing: .03em; }
 .panel a { color: var(--txt); text-underline-offset: 3px; white-space: nowrap; }
@@ -90,11 +107,13 @@ footer { color: var(--sec); font-size: 15px; }
     <h1>Drumtonic</h1>
     <div class="pkg" id="pkg-install">Installs <b>Drumtonic @VERSION@</b> · identity <b>@PRODUCT@</b> · @SIZE@ KB</div>
     <div class="pkg" id="pkg-try" hidden>Plays <b>Drumtonic @VERSION@</b> here · no FM-1 needed · keyboard, mouse or a MIDI controller</div>
+    <div class="pkg" id="pkg-backup" hidden>Backs up and restores <b>your saves</b> · kits, patterns, sound library, settings</div>
   </header>
 
   <div class="tabs" role="tablist" aria-label="Drumtonic">
     <button class="tab" role="tab" id="t-try" aria-controls="p-try" type="button">Try<small>in this browser</small></button>
     <button class="tab" role="tab" id="t-install" aria-controls="p-install" type="button">Install<small>on your FM-1</small></button>
+    <button class="tab" role="tab" id="t-backup" aria-controls="p-backup" type="button">Backup<small>your saves</small></button>
   </div>
 
   <section id="p-try" role="tabpanel" aria-labelledby="t-try" hidden><div id="emu"></div></section>
@@ -123,39 +142,55 @@ footer { color: var(--sec); font-size: 15px; }
   </details>
   </section>
 
-  <footer>Installing works in Chrome or Edge on a computer; trying, in any current browser on a computer. Use a USB data cable and close other music apps that might hold the FM-1's MIDI port. Drumtonic is GPL-3.0 firmware based on Dinghy. Package sha256 @SHA@…</footer>
+  <section id="p-backup" role="tabpanel" aria-labelledby="t-backup" class="col" hidden>
+  <div class="steps" id="bsteps" aria-label="Steps" hidden></div>
+  <section class="panel" id="bpanel" aria-live="polite"></section>
+  <div class="status" id="bstatus" role="status"><span id="bst1"></span><span id="bst2"></span></div>
+  <details>
+    <summary>A full copy of the memory</summary>
+    <ol style="list-style: none; padding-left: 16px">
+      <li>A backup keeps your saves. A full copy keeps everything in the FM-1's memory, the firmware and the unit's own key too. It is for repairs, and it needs the command-line tools.</li>
+      <li><a href="https://github.com/fc79/drumtonic/blob/main/docs/BACKUP.md" target="_blank" rel="noopener" aria-label="How to copy the whole memory (opens in a new tab)">How to copy the whole memory ↗</a></li>
+    </ol>
+  </details>
+  <input type="file" id="bfile" accept=".dtbak" hidden>
+  </section>
+
+  <footer>Installing, backing up and restoring work in Chrome or Edge on a computer; trying, in any current browser on a computer. Use a USB data cable and close other music apps that might hold the FM-1's MIDI port. Drumtonic is GPL-3.0 firmware based on Dinghy. Package sha256 @SHA@…</footer>
 </div>
 
 <script>const EMU_WASM = "@EMU_WASM@"; const EMU_WORKLET = @EMU_WORKLET@;</script>
 <script type="module">
 /*@EMU_CODE@*/
-/* the tabs: INSTALL by default (the README and the hub link this page to install), TRY with #try */
+/* the tabs: INSTALL by default (the README and the hub link this page to install), TRY with #try, BACKUP with #backup */
 let emuPanel = null;
+const TABS = ["try", "install", "backup"];
+const tabOf = h => TABS.includes(h.slice(1)) ? h.slice(1) : "install";
 function tab(name, focus) {
   const tr = name === "try";
-  for (const [t, p, on] of [["t-try", "p-try", tr], ["t-install", "p-install", !tr]]) {
-    document.getElementById(t).setAttribute("aria-selected", on); document.getElementById(t).tabIndex = on ? 0 : -1;
-    document.getElementById(p).hidden = !on;
+  for (const t of TABS) {
+    const on = t === name, b = document.getElementById("t-" + t);
+    b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1;
+    document.getElementById("p-" + t).hidden = !on; document.getElementById("pkg-" + t).hidden = !on;
   }
-  document.getElementById("pkg-try").hidden = !tr; document.getElementById("pkg-install").hidden = tr;
-  if (focus) document.getElementById(tr ? "t-try" : "t-install").focus();
-  try { history.replaceState(null, "", tr ? "#try" : "#install"); } catch (e) {}
+  if (focus) document.getElementById("t-" + name).focus();
+  try { history.replaceState(null, "", "#" + name); } catch (e) {}
+  window.onTab?.(name);
   if (tr && !emuPanel) {
     try { emuPanel = mountEmu(document.getElementById("emu"), { wasm: EMU_WASM, worklet: EMU_WORKLET }); }
     catch (e) { document.getElementById("emu").textContent = "The emulator could not load in this browser: " + e.message; }
   }
   if (emuPanel) tr ? emuPanel.resume() : emuPanel.pause();   /* (the sound stops while installing) */
 }
-document.getElementById("t-try").onclick = () => tab("try");
-document.getElementById("t-install").onclick = () => tab("install");
+for (const t of TABS) document.getElementById("t-" + t).onclick = () => tab(t);
 document.querySelector(".tabs").addEventListener("keydown", e => {
   if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
   e.preventDefault();
-  const tr = e.key === "Home" || (e.key !== "End" && document.getElementById("t-try").getAttribute("aria-selected") !== "true");
-  tab(tr ? "try" : "install", true);
+  const cur = TABS.findIndex(t => document.getElementById("t-" + t).getAttribute("aria-selected") === "true");
+  const n = e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : (cur + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length;
+  tab(TABS[n], true);
 });
-tab(location.hash === "#try" ? "try" : "install");
-addEventListener("hashchange", () => tab(location.hash === "#try" ? "try" : "install"));
+addEventListener("hashchange", () => tab(tabOf(location.hash)));
 
 /*@FM1PKG@*/
 /*@FM1OTA@*/
@@ -177,7 +212,8 @@ function show(html, actions = {}) {
   panel.innerHTML = html;
   for (const [id, fn] of Object.entries(actions)) $(id).onclick = fn;
 }
-function guard(on) { busy = on; }
+let busyTab = "";
+function guard(on, where = "install") { busy = on; busyTab = on ? where : ""; }
 addEventListener("beforeunload", e => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
 
 /* Drumtonic's earlier identities: 923 up to 0.2 (COQUÍ answers with it too), 933 in 0.2.1 (sloopDX's range): only one
@@ -213,11 +249,15 @@ function start() {
   status("msg", "READY", "NOTHING CONNECTED");
 }
 
+async function midi() {                 /* the browser's MIDI with SysEx, once for both tabs; throws if not allowed */
+  if (!access) { access = await navigator.requestMIDIAccess({ sysex: true }); up = new Updater(access); }
+}
 async function connect() {
   const b = $("go"); if (b) { b.disabled = true; b.textContent = "Looking…"; }
+  if (busyTab === "backup") { show(`<h2>A backup is running</h2><p>Wait for it to finish in the BACKUP tab, then come back.</p><div class="btns"><button class="btn" id="go">Connect FM-1</button></div>`, { go: connect }); return; }
   status("", "LOOKING FOR THE FM-1");
   if (!access) {
-    try { access = await navigator.requestMIDIAccess({ sysex: true }); up = new Updater(access); }
+    try { await midi(); }
     catch (e) {
       steps(-1, 0, 0);
       show(`<h2>MIDI access was not allowed</h2><p>The installer needs MIDI with SysEx to talk to the FM-1. Allow it in the browser's site settings (the icon left of the address), reload the page and try again.</p><p class="small">${esc(e.name)}: ${esc(e.message)}</p><div class="btns"><button class="btn" id="go">Try again</button></div>`, { go: connect });
@@ -327,6 +367,268 @@ function failed(e, phase) {
   }
 }
 
+/* ---- BACKUP: the FM-1's saves into a .dtbak file, or one put back (web/fm1ota.js backup / restore). First a choice
+   (Back up / Restore a backup), then the chosen flow's steps; nothing stays connected between two actions */
+const bpanel = $("bpanel");
+const BSTEPS = { backup: [["CONNECT", "find the FM-1"], ["READ", "saves read"], ["SAVE", "file saved"]],
+                 restore: [["FILE", "backup chosen"], ["CONNECT", "find the FM-1"], ["ANSWER", "yes on the FM-1"], ["WRITE", "saves written"], ["RESTART", "back with them"]] };
+let bflow = "", bfile = null, bdata = null, babort = null;
+function bsteps(on, done = on, bad = -1) {
+  const s = BSTEPS[bflow], box = $("bsteps");
+  box.hidden = !s;
+  if (!s) return;
+  box.style.gridTemplateColumns = `repeat(${s.length}, minmax(0, 1fr))`;
+  box.innerHTML = s.map(([b, t], i) => `<div class="${i === bad ? "bad" : i < done ? "done" : i === on ? "on" : ""}"><b>${b}</b><span>${t}</span></div>`).join("");
+}
+function bstatus(cls, a, b = "") { $("bstatus").className = "status " + cls; $("bst1").textContent = a; $("bst2").textContent = b; }
+function bshow(html, actions = {}) {
+  const had = bpanel.contains(document.activeElement);
+  bpanel.innerHTML = html;
+  for (const [id, fn] of Object.entries(actions)) $(id).onclick = fn;
+  if (had) { const h = bpanel.querySelector("h2"); if (h) { h.tabIndex = -1; h.focus(); } }   /* (keyboard: not lost) */
+}
+const WORDS = [["SETS", "settings"], ["KIT1", "kits 1–8"], ["SONG", "patterns"], ["KIT2", "kits 9–16"], ["LIB", "sound library"]];
+function contents(recs) {                       /* "settings, kits 1–8, patterns, kits 9–16; sound library: empty" */
+  const has = n => recs.some(r => r.name.startsWith(n) && r.data.length);
+  const yes = WORDS.filter(([n]) => has(n)).map(w => w[1]), no = WORDS.filter(([n]) => !has(n)).map(w => w[1]);
+  if (!yes.length) return `<span class="none">nothing: every save empty</span>`;
+  return esc(yes.join(", ")) + (no.length ? `<span class="none">; ${esc(no.join(", "))}: empty</span>` : "");
+}
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function made(head) {                           /* "17 Nov 2026, 14:30 · Drumtonic 0.3", as written on that computer */
+  const m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/.exec(head.date || "");
+  const when = m ? `${+m[3]} ${MONTHS[+m[2] - 1]} ${m[1]}, ${m[4]}:${m[5]}` : "date unknown";
+  const v = head.version || "";
+  return `${when} · ${v === "0.0" ? "a development build of Drumtonic" : v ? "Drumtonic " + v : "Drumtonic"}`;
+}
+function newer(a, b) {                          /* version a after b ("0.3.1" > "0.3"); unknown: false */
+  if (!a || !b || a === "0.0" || b === "0.0") return false;
+  const x = a.split(".").map(Number), y = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+function fileName() {
+  const d = bkDate().replace(/:\d\d[+-]\d{4}$/, "").replace("T", "-").replace(":", "");
+  return `drumtonic-backup-${d}.dtbak`;
+}
+
+function bStart() {
+  bflow = ""; bfile = null; bdata = null; bsteps();
+  bshow(`<h2>Back up or restore</h2>
+    <div class="choices">
+      <div class="choice"><div><h3>Back up the FM-1</h3><p>Saves the kits, patterns, sound library and settings saved on the FM-1 into one file. Nothing on the FM-1 changes.</p></div>
+        <div class="btns"><button class="btn" id="bgo">Back up</button></div></div>
+      <div class="choice"><div><h3>Restore a backup</h3><p>Puts a backup file back on the FM-1: yours, or one a friend sent you. It replaces all the FM-1's saves. You can also drop the file here.</p></div>
+        <div class="btns"><button class="btn quiet" id="bpick">Choose backup file</button></div></div>
+    </div>`, { bgo: backUp, bpick: pick });
+  bstatus("msg", "READY", "Chrome or Edge, USB data cable");
+}
+window.onTab = name => {                        /* (leaving a tab closes what it had connected, unless it is working) */
+  if (name !== "install" && dev && !busy) start();
+  if (name === "backup" && !bflow && !busy) bStart();
+};
+
+/* connecting: Drumtonic with backup only; the rest says what to do */
+async function bConnect(stepAt) {
+  if (busyTab === "install") { bshow(`<h2>An install is running</h2><p>Wait for it to finish in the INSTALL tab, then come back.</p><div class="btns"><button class="btn quiet" id="bx">Back</button></div>`, { bx: bStart }); return null; }
+  const back = `<button class="btn quiet" id="bx">Back</button>`;
+  const fail = (title, text, st, more = "", act = {}) => {
+    bsteps(-1, stepAt, stepAt);
+    bshow(`<h2>${title}</h2><p>${text}</p><div class="btns">${more}${back}</div>`, { bx: bStart, ...act });
+    bstatus("err", st[0], st[1] || "");
+    return null;
+  };
+  if (!navigator.requestMIDIAccess)
+    return fail("This browser cannot reach the FM-1", "Backing up and restoring talk to the FM-1 over USB MIDI, which only <b>Chrome</b> and <b>Edge</b> on a computer allow. Open this page in one of them.", ["NO MIDI", "use Chrome or Edge"]);
+  bsteps(stepAt);
+  bshow(`<h2>Connecting</h2><p>Looking for the FM-1… The browser may ask to let this page use MIDI devices: allow it.</p>`);
+  bstatus("", "CONNECTING");
+  try { await midi(); }
+  catch (e) { return fail("MIDI access was not allowed", `This page needs MIDI with SysEx to talk to the FM-1. Allow it in the browser's site settings (the icon left of the address), reload the page and try again.</p><p class="small">${esc(e.name)}: ${esc(e.message)}`, ["MIDI NOT ALLOWED"]); }
+  let d = null;
+  try { d = await up.find(); } catch (e) { console.error(e); }
+  const again = `<button class="btn" id="bagain">Try again</button>`, retry = { bagain: () => bConnectAgain() };
+  if (!d) {
+    const names = up.inputNames();
+    return fail("FM-1 not found", `No FM-1 answered. Check that it is switched on and connected with a <b>data</b> cable (some cables only charge), and close music apps that might be using it. Then try again.</p><p class="small">MIDI inputs: ${names.length ? esc(names.join(", ")) : "none"}`, ["FM-1 NOT FOUND"], again, retry);
+  }
+  const id = d.id, t = esc(id.text), v = drumtonicOf(id);
+  const toInstall = `<button class="btn" id="binst">Go to Install</button>`, inst = { binst: () => tab("install", true) };
+  if (id.text !== PRODUCT || id.loader) {
+    d.link.close();
+    if (id.loader) return fail("The FM-1 is in update mode", `An install did not finish (<b>${t}</b>). Finish it in the INSTALL tab first.`, ["UPDATE MODE", id.text], toInstall, inst);
+    if (v) return fail("This Drumtonic is too old for backups", `The FM-1 runs <b>Drumtonic ${esc(v)}</b>, which cannot ${bflow === "backup" ? "send its saves" : "take a backup back"}. Install the latest Drumtonic first: installing keeps your saves.`, ["TOO OLD", "Drumtonic " + v], toInstall, inst);
+    if (modelOf(id.text) !== "FM-1") return fail("This is not an FM-1", `The connected device is <b>${t}</b>.`, ["WRONG DEVICE", id.text], again, retry);
+    return fail("This FM-1 does not run Drumtonic", `The FM-1 runs <b>${esc(describe(id))}</b> (${t}). Backups are Drumtonic's own saves: install Drumtonic first. To keep what is on this FM-1 now, make a full copy of its memory (below).`, ["NOT DRUMTONIC", id.text], toInstall, inst);
+  }
+  bstatus("", "CONNECTED", `${id.text} · ${describe(id)}`);
+  return d;
+}
+let bConnectAgain = () => {};
+
+/* back up: connect, read, then the browser's Save as */
+async function backUp() {
+  bflow = "backup"; bConnectAgain = backUp;
+  const d = await bConnect(0);
+  if (!d) return;
+  bsteps(1);
+  bshow(`<h2>Reading the saves</h2><div class="big" id="bpc">0 %</div><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="bpb"><i id="bpi"></i></div><p>Under a second. Nothing on the FM-1 changes.</p>`);
+  guard(true, "backup");
+  try {
+    const recs = await backup(d, (done, total) => { const p = Math.floor(done * 100 / Math.max(total, 1)); $("bpi").style.width = p + "%"; $("bpb").setAttribute("aria-valuenow", p); $("bpc").textContent = p + " %"; });
+    bdata = { recs, bytes: backupBytes(recs, d.id.text, d.id.release, bkDate()), from: `${d.id.text} · ${describe(d.id)}` };
+    if (window.showSaveFilePicker && navigator.userActivation && !navigator.userActivation.isActive) { d.link.close(); return readyToSave(); }
+  } catch (e) {
+    bsteps(-1, 1, 1);
+    const old = e.code === "nobackup";
+    bshow(`<h2>${old ? "This Drumtonic is too old for backups" : "The backup stopped"}</h2><p>${old ? "This Drumtonic cannot send its saves. Install the latest Drumtonic first: installing keeps your saves." : e.code === "lost" ? "The FM-1 was disconnected while its saves were read. Nothing changed on it: reconnect it and try again." : "The FM-1 did not send all its saves. Nothing changed on it: try again."}</p><p class="small">${esc(e.message)}</p>
+      <div class="btns">${old ? `<button class="btn" id="binst">Go to Install</button>` : `<button class="btn" id="bagain">Try again</button>`}<button class="btn quiet" id="bx">Back</button></div>`,
+      old ? { binst: () => tab("install", true), bx: bStart } : { bagain: backUp, bx: bStart });
+    bstatus("err", old ? "TOO OLD" : "BACKUP NOT MADE");
+    return;
+  } finally { guard(false); d.link.close(); }
+  await save();
+}
+async function save() {
+  bsteps(2);
+  const name = fileName();
+  try {
+    if (window.showSaveFilePicker) {
+      const h = await showSaveFilePicker({ suggestedName: name, types: [{ description: "Drumtonic backup", accept: { "application/octet-stream": [".dtbak"] } }] });
+      const w = await h.createWritable();
+      await w.write(bdata.bytes); await w.close();
+      return saved(h.name);
+    }
+    const a = document.createElement("a");     /* (no Save as window: the browser's downloads) */
+    a.href = URL.createObjectURL(new Blob([bdata.bytes])); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    return saved(name + " (in Downloads)");
+  } catch (e) {
+    if (e.name === "SecurityError" || e.name === "NotAllowedError") return readyToSave();   /* (the click too long ago) */
+    const cancelled = e.name === "AbortError";
+    bsteps(-1, 2, 2);
+    bshow(`<h2>The backup is not saved yet</h2><p>The saves were read, but ${cancelled ? "no file was chosen" : "the file could not be written"}. Press <b>Save backup file</b> to choose where it goes.</p>${cancelled ? "" : `<p class="small">${esc(e.message)}</p>`}
+      <div class="btns"><button class="btn" id="bsave">Save backup file</button><button class="btn quiet" id="bx">Cancel</button></div>`, { bsave: save, bx: bStart });
+    bstatus("err", "NOT SAVED", "the saves are read");
+  }
+}
+function readyToSave() {                       /* the saves read; Save as needs a fresh click (the browser's rule) */
+  bsteps(2);
+  bshow(`<h2>Saves read</h2><dl class="dev"><dt>Contains</dt><dd>${contents(bdata.recs)}</dd><dt>From</dt><dd>${esc(bdata.from)}</dd></dl>
+    <p>Press <b>Save backup file</b> to choose where the file goes.</p>
+    <div class="btns"><button class="btn" id="bsave">Save backup file</button><button class="btn quiet" id="bx">Cancel</button></div>`, { bsave: save, bx: bStart });
+  bstatus("", "SAVES READ", "choose where the file goes");
+}
+function saved(name) {
+  bsteps(-1, 3);
+  bshow(`<h2>Backup saved</h2><dl class="dev"><dt>File</dt><dd>${esc(name)}</dd><dt>Contains</dt><dd>${contents(bdata.recs)}</dd><dt>From</dt><dd>${esc(bdata.from)}</dd></dl>
+    <p>Keep it somewhere safe, or send it to a friend: restoring it on their FM-1 replaces all their saves.</p>
+    <div class="btns"><button class="btn quiet" id="bx">Done</button></div>`, { bx: bStart });
+  bstatus("ok", "BACKUP SAVED", name);
+}
+
+/* restore: the file first, then connect, the FM-1's question, the write, the restart */
+function pick() { bflow = "restore"; $("bfile").value = ""; $("bfile").click(); }
+$("bfile").onchange = () => { const f = $("bfile").files[0]; if (f) chosen(f); };
+bpanel.addEventListener("dragover", e => { if (!busy && e.dataTransfer?.types?.includes("Files")) e.preventDefault(); });
+bpanel.addEventListener("drop", e => { const f = e.dataTransfer?.files?.[0]; if (!f || busy) return; e.preventDefault(); bflow = "restore"; chosen(f); });
+async function chosen(f) {
+  bflow = "restore";
+  let b;
+  try { b = readBackup(new Uint8Array(await f.arrayBuffer())); if (b.head.device !== PRODUCT) throw new InstallError("badbackup", `a backup of ${b.head.device}, not of Drumtonic`); }
+  catch (e) {
+    bsteps(-1, 0, 0);
+    bshow(`<h2>This file cannot be restored</h2><p><b>${esc(f.name)}</b> is not a Drumtonic backup, or it was damaged on the way. Nothing was sent to the FM-1.</p><p class="small">${esc(e.message)}</p>
+      <div class="btns"><button class="btn" id="bpick">Choose another file</button><button class="btn quiet" id="bx">Cancel</button></div>`, { bpick: pick, bx: bStart });
+    bstatus("err", "NOT A BACKUP", f.name);
+    return;
+  }
+  bfile = { name: f.name, ...b };
+  bsteps(1, 1);
+  bshow(`<h2>Restore this backup?</h2>
+    <dl class="dev"><dt>File</dt><dd>${esc(f.name)}</dd><dt>Made</dt><dd>${esc(made(b.head))}</dd><dt>Contains</dt><dd>${contents(b.recs)}</dd></dl>
+    <div class="warn"><b>It replaces every save on the FM&#8209;1</b><span>Its kits, patterns, sound library and settings, with what is in this file; what the file has empty, the FM-1 has empty after. To keep them, back them up first.</span></div>
+    <div class="btns"><button class="btn" id="bgo">Restore</button><button class="btn quiet" id="bpick">Choose another file</button><button class="btn quiet" id="bx">Cancel</button></div>`,
+    { bgo: restoreIt, bpick: pick, bx: bStart });
+  bstatus("msg", "BACKUP CHOSEN", f.name);
+}
+async function restoreIt() {
+  bConnectAgain = restoreIt;
+  const d = await bConnect(1);
+  if (!d) return;
+  const ver = drumtonicOf(d.id), on = `${d.id.text} · ${describe(d.id)}`;
+  let phase = "list", sure = false;
+  babort = { asked: false };
+  guard(true, "backup");
+  try {
+    sure = await restore(d, bfile.recs, (done, total) => {
+      const p = Math.floor(done * 100 / Math.max(total, 1));
+      $("bpi").style.width = p + "%"; $("bpb").setAttribute("aria-valuenow", p); $("bpc").textContent = p + " %";
+    }, k => {
+      phase = k;
+      if (k === "ask") {
+        bsteps(2);
+        bshow(`<h2>Answer on the FM-1</h2><p class="say">Press <span class="k">SEL</span> on the FM-1 to replace, <span class="k">HOME</span> to keep.</p>
+          <p>The FM-1 shows <b>REPLACE ALL SAVES?</b>. Nothing is written until you press SEL.</p>
+          <div class="btns"><button class="btn quiet" id="bx">Cancel</button></div>`, { bx: () => { babort.asked = true; $("bx").disabled = true; } });
+        bstatus("", "WAITING FOR THE FM-1", on);
+      } else if (k === "write") {
+        bsteps(3);
+        bshow(`<h2>Restoring</h2><div class="big" id="bpc">0 %</div><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="bpb"><i id="bpi"></i></div><p><b>Do not unplug the FM-1 until it restarts.</b> It takes a few seconds.</p>`);
+        bstatus("", "WRITING", "DO NOT UNPLUG");
+      }
+    }, babort);
+    phase = "restart";
+    d.link.close();
+    bsteps(4);
+    bshow(`<h2>Restarting</h2><p>The FM-1 starts again with the backup's saves. Wait for it to come back.</p>`);
+    bstatus("", "RESTARTING", "DO NOT UNPLUG");
+    await new Promise(r => setTimeout(r, DELAY.reboot));
+    const back = await up.waitFor(i => i.text === PRODUCT, DELAY.waitReboot);
+    if (!back) {
+      bsteps(-1, 4, 4);
+      bshow(`<h2>The FM-1 did not come back</h2><p>${sure ? "The backup's saves were written, but" : "The restore was sent, but"} the FM-1 did not restart. Switch it off and on${sure ? "" : ", then back it up to check what it has"}.</p><div class="btns"><button class="btn quiet" id="bx">Done</button></div>`, { bx: bStart });
+      bstatus("err", "NO RESTART", "SWITCH OFF AND ON");
+      return;
+    }
+    const ok = await restoreDone(back);
+    back.link.close();
+    if (!ok) throw new InstallError("failed", "the FM-1 did not finish the restore (no restart)");
+    bsteps(-1, 5);
+    bshow(`<h2>Backup restored</h2><dl class="dev"><dt>On the FM-1</dt><dd>${esc(`${back.id.text} · ${describe(back.id)}`)}</dd><dt>Now has</dt><dd>${contents(bfile.recs)}</dd></dl><p>The FM-1 restarted with the backup's saves. You can unplug it.</p>
+      <div class="btns"><button class="btn quiet" id="bx">Done</button></div>`, { bx: bStart });
+    bstatus("ok", "RESTORED", bfile.name);
+  } catch (e) {
+    rFailed(e, phase, ver);
+  } finally { guard(false); d.link.close(); }
+}
+function rFailed(e, phase, ver) {
+  const c = e.code || "error", detail = `<p class="small">${esc(e.message)}</p>`;
+  const again = `<button class="btn" id="bgo">Restore again</button>`, x = `<button class="btn quiet" id="bx">Done</button>`;
+  const inst = `<button class="btn" id="binst">Go to Install</button>`;
+  const end = (at, title, text, st, btns, act) => { bsteps(-1, at, at); bshow(`<h2>${title}</h2><p>${text}</p>${detail}<div class="btns">${btns}</div>`, act); bstatus(st[0], st[1], st[2] || ""); };
+  if (c === "cancelled") {
+    const how = /page/.test(e.message) ? "The restore was cancelled here." : "HOME was pressed on the FM-1, or nobody answered within a minute.";
+    bsteps(-1, 2, 2);
+    bshow(`<h2>Nothing was changed</h2><p>${how} The FM-1 keeps its saves as they were.</p><div class="btns">${again}${x}</div>`, { bgo: restoreIt, bx: bStart });
+    bstatus("msg", "NOTHING CHANGED");
+  } else if (c === "nobackup" || c === "norestore")
+    end(1, "This Drumtonic is too old for backups", `This Drumtonic cannot take a backup back. Install the latest Drumtonic first: installing keeps your saves. Nothing was written.`, ["err", "TOO OLD"], inst + x, { binst: () => tab("install", true), bx: bStart });
+  else if ((c === "refused" || c === "badbackup") && newer(bfile.head.version, ver))
+    end(1, "This backup is from a newer Drumtonic", `It was made with <b>Drumtonic ${esc(bfile.head.version)}</b>; the FM-1 runs <b>Drumtonic ${esc(ver)}</b>, which cannot read it. Install Drumtonic ${esc(bfile.head.version)} or newer, then restore. Nothing was written.`, ["err", "NEWER BACKUP", "Drumtonic " + bfile.head.version], inst + x, { binst: () => tab("install", true), bx: bStart });
+  else if (c === "refused" || c === "badbackup")
+    end(1, "This backup does not fit this Drumtonic", `It was made with ${esc(made(bfile.head).split(" · ")[1])}, and the FM-1 cannot read ${c === "refused" && e.record ? "its " + esc(e.record) : "it"}. Nothing was written.`, ["err", "BACKUP REFUSED"], `<button class="btn" id="bpick">Choose another file</button>` + x, { bpick: pick, bx: bStart });
+  else if (c === "busy")
+    end(1, "The FM-1 is still asking", `An earlier restore is waiting for an answer on the FM-1. Press <span class="k">HOME</span> on it, or wait a minute, then try again. Nothing was written.`, ["err", "BUSY"], again + x, { bgo: restoreIt, bx: bStart });
+  else if (phase === "list" || phase === "ask")
+    end(phase === "ask" ? 2 : 1, c === "lost" ? "The FM-1 was disconnected" : "The FM-1 stopped answering", "Nothing was written: the FM-1 keeps its saves. Reconnect it and restore again.", ["err", "NOTHING WRITTEN"], again + x, { bgo: restoreIt, bx: bStart });
+  else
+    end(3, "The restore stopped", `${c === "lost" ? "The FM-1 was disconnected while writing." : "The FM-1 did not take every save."} It still works: some saves may already come from the backup, the others are as they were. ${c === "lost" ? "Plug it back in and restore" : "Restore"} again to finish.`, ["err", c === "lost" ? "THE FM-1 WAS DISCONNECTED" : "RESTORE NOT FINISHED"], again + x, { bgo: restoreIt, bx: bStart });
+}
+bStart();
+
+tab(tabOf(location.hash));
 try {
   const raw = Uint8Array.from(atob(PKG_B64), c => c.charCodeAt(0));
   pkg = loadPackage(raw, PRODUCT);

@@ -6,7 +6,7 @@
 # Drumtonic
 
 **Turn the M-Vave FM-1 into a drum machine.** Ten synthesized drum channels, a 64-step sequencer with p-locks,
-conditions, micro timing and ratchets, beat repeat, a reverb, a tape delay and a master compressor. It all runs
+conditions, micro timing and ratchets, beat repeat, a reverb with five types, a tape delay and a master compressor. It all runs
 on the instrument itself, with no computer and no samples, and plays through its own output.
 
 <p align="center">
@@ -32,7 +32,7 @@ controller.
   clap envelopes, mono or stereo).
 - **24 controls a channel**, in eight banks: the oscillator, its modulation, the amp, the noise and its envelope,
   distortion, EQ, level, pan, choke groups, click. The full list is in [docs/DRUMS.md](docs/DRUMS.md).
-- **Three factory kits**: CLASSIC, TIGHT and INDUSTR. There are 8 places for your own kits.
+- **Three factory kits**: CLASSIC, TIGHT and INDUSTR. There are 16 places for your own kits.
 - **A sound library**: 59 ready sounds and 64 places for yours. Scroll the list and the channel plays each sound
   in the running pattern as you go.
 
@@ -75,17 +75,22 @@ controller.
   and the pattern is right where it would have been.
 - **Note repeat**: tap ARP on STEPS, then hold a channel's key and it repeats at 1/4 to 1/32, triplets included. With REC on, the
   repeats are recorded, one hit a step (with REC on FREE, each with its micro timing).
-- **Kits on the keys**: on MIX, a tap on a white key loads one of the 8 kits.
+- **Kits on the keys**: on MIX, the 16 white keys are 16 kits. A tap loads one, GLO + a key saves there, and
+  GLO + REC erases the one playing.
 
 ### Effects and master
 
-- **Reverb** and **delay** that every channel sends to. The delay time is a note value, and its TAPE control
-  goes from clean to wow, flutter and saturation. It can also run ping-pong.
+- **Reverb** and **delay** that every channel sends to. The reverb has five types (CLASSIC, PLATE, HALL, ROOM,
+  GATED), a predelay up to 100 ms, size, modulation and stereo width. The delay time is a note value, and its TAPE
+  control goes from clean to wow, flutter and saturation. It can also run ping-pong, and send its echoes on into
+  the reverb (TO REV, in %). Each has a high-pass on its
+  input, shown in Hz.
 - **Master**: drive, a 24 dB/octave low- and high-pass filter with resonance, and a **compressor**. The compressor
   has threshold, ratio, attack and release in ms, a sidechain high-pass so the kick drives it less, and dry/wet
   for parallel compression. A transparent look-ahead limiter sits at the end.
 
 <p align="center">
+<img src="docs/screens/reverb.png" width="240" alt="REVERB: decay, predelay, size, tone, the type CLASSIC on ALGORITHM">
 <img src="docs/screens/delay.png" width="240" alt="DELAY: time 1/8 dotted, feedback, tone, tape">
 <img src="docs/screens/comp.png" width="240" alt="COMP: threshold, ratio, attack, release, the gain reduction, dry/wet">
 </p>
@@ -96,6 +101,8 @@ controller.
   page is in the middle, and a band along the bottom has the channel's colour (red while recording). A knob you turn
   shows its value large.
 - **Hold any button** for a quarter of a second to see what it does on that page.
+- **Before anything is lost it asks**, in large letters: HOME says no, SEL says yes, in the order they sit on the
+  panel.
 - **The knobs accelerate**: turn slowly for single steps, quickly to sweep the whole range.
 - **The keys light up** with what is playing: each channel's key flashes on its hits, and the white keys follow
   the playhead.
@@ -127,13 +134,19 @@ installed on the computer.
 
 ```sh
 python3 tools/fm1_install.py --info                            # what the FM-1 runs now
-python3 tools/fm1_install.py drumtonic-0.2.4.fwsc --yes        # the install
+python3 tools/fm1_install.py drumtonic-0.9.fwsc --yes          # the install
 ```
 
 The FM-1 then reports itself as `FM-1_987`, and the start-up screen shows the version.
 
+**Back up your saves.** The installer's **Backup** tab saves your kits, patterns, sound library and settings into
+one file, and puts a backup file back on the FM-1 (yours, or one a friend sent you; the FM-1 asks first). From the
+command line: `fm1_install.py --backup` and `--restore FILE`. See
+[the manual](docs/DRUMTONIC.md#backup-and-restore).
+
 **What the first save replaces.** Drumtonic keeps its settings, kits and patterns in the places the FM-1
-firmwares share (0xFC000, 0xF4000-0xF9FFF), so what another firmware kept there is overwritten. Your backup has
+firmwares share (0xFC000, 0xF4000-0xF9FFF), and kits 9-16 at 0x9F000, so what another firmware kept there is
+overwritten. Your backup has
 it. Drumtonic does not read other firmwares' projects, kits or samples: it starts from its own factory kits. The installers never write the boot area (0x0-0x3FFF), 0xC0000-0xC1FFF or the unit's key (0xFF000-0xFFFFF).
 
 The whole manual (every page, button and gesture): **[docs/DRUMTONIC.md](docs/DRUMTONIC.md)**.
@@ -148,9 +161,9 @@ tools/get_toolchain.sh                      # JieLi's clang for the chip, to ~/.
 git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
     https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
 ./build.sh                                  # -> build/drumtonic.fwsc
-./build.sh --board fm1 --release 0.2.4      # -> build/drumtonic-0.2.4.fwsc, "0.2.4" on the screen
-web/emu/build.sh 0.2.4                      # the Try tab's emulator (Docker) -> build/emu/drumtonic-emu.wasm
-python3 tools/make_installer.py build/drumtonic-0.2.4.fwsc -o drumtonic-0.2.4-installer.html
+./build.sh --board fm1 --release 0.9        # -> build/drumtonic-0.9.fwsc, "0.9" on the screen
+web/emu/build.sh 0.9                        # the Try tab's emulator (Docker) -> build/emu/drumtonic-emu.wasm
+python3 tools/make_installer.py build/drumtonic-0.9.fwsc -o drumtonic-0.9-installer.html
 ```
 
 The last line writes the browser installer as a single HTML file with the package and the emulator inside. It
@@ -161,7 +174,7 @@ Without the instrument, the firmware also runs on a computer:
 
 ```sh
 tests/run_host.sh tests/scripts/drumtonic_fm1_tour.txt    # every page: screens as PNG, the sound as WAV (build/host/)
-tools/docs_screens.sh 0.2.3                                # the screenshots on this page
+tools/docs_screens.sh 0.9                                  # the screenshots on this page
 tools/emu.sh                                               # this checkout's firmware in the browser's emulator
 ./build.sh && sh tests/run_tests.sh                        # the whole test suite
 ```

@@ -25,7 +25,7 @@
  *          its way across; a mark at the cell's bottom
  *   EDIT   SOUND: OSC, MOD, AMP, NOISE, N.ENV, OUT, CHANNEL (level, pan, the sends)
  *   LFO    the pattern's 8 LFOs; SELECT one, its RATE, SHAPE, DEPTH, SYNC
- *   FX     REVERB, DELAY, DELAY 2, MASTER, COMP
+ *   FX     REVERB, REVERB 2, DELAY, DELAY 2, MASTER, COMP
  *   SAVE   everything;  PLAY, REC on the press;  ARP: nothing (no 303 here)
  * A button held alone for 0.9 s shows what it does on this page. */
 #include "saira_font.h"
@@ -117,7 +117,7 @@ static void txc(int32_t xc, int32_t y, const felucca_font_t *f, const char *s, u
 /* ---- the state */
 enum { V_LIVE, V_SET, V_MIX, V_STEPS, V_SOUND, V_LFO, V_FX, NVIEW };
 enum { CB_NONE, CB_PAT, CB_TRACK, CB_STEP, CB_SOUND, CB_LFO };
-enum { A_NONE, A_PASTE_PAT, A_PASTE_TRACK, A_CLEAR_PAT, A_CLEAR_TRACK, A_KIT_SAVE, A_FACTORY, A_LIB_SAVE };
+enum { A_NONE, A_PASTE_PAT, A_PASTE_TRACK, A_CLEAR_PAT, A_CLEAR_TRACK, A_KIT_SAVE, A_FACTORY, A_LIB_SAVE, A_KIT_ERASE, A_RESTORE };
 static struct {
     uint8_t view, bank[NVIEW], spage, pbank, row, lfo_sel;
     uint32_t btn, btn_used, down_t[PANEL_NBTN], turn_t, keys;
@@ -144,7 +144,7 @@ static struct {
     uint32_t splash, splash_t, cpu;   /* splash: when the opening began (0: over); splash_t: its last frame */
     uint32_t h_top, h_mid, h_bot, h_led, h_midm, mid_t;   /* h_midm, mid_t: the middle band with its meters, when */
     uint32_t big_until;                         /* the big bubble (big()): until then, its two lines, grey: the first */
-    char big_l1[8], big_l2[8], copied[24];      /* copied: what GLO held copied, for its guide (0: nothing this hold) */
+    char big_l1[10], big_l2[10], copied[24];      /* copied: what GLO held copied, for its guide (0: nothing this hold) */
     uint8_t big_grey;
     uint32_t guide_seen;                        /* the buttons whose guide showed in this press */
 } ui = {.held = -1, .chain_key = -1, .touched = -1};
@@ -181,16 +181,19 @@ static const bank_t BANK_SOUND[NSOUND] = {
     {"CHANNEL", {PP(P_LEVEL), PP(P_PAN), PP(P_REV), PP(P_DLY)}},
     {"LIBRARY", {NOK, NOK, NOK, NOK}}};          /* (a list: lib_*) */
 static const bank_t BANK_LFO[1] = {{"LFO", {{R_LFO, 0}, {R_LFO, 1}, {R_LFO, 2}, {R_LFO, 3}}}};
-#define B_COMP 4u                               /* FX's COMP page: its meter, MIX on ALGORITHM */
-static const bank_t BANK_FX[5] = {
-    {"REVERB", {FXP(FX_RV_DECAY), FXP(FX_RV_TONE), FXP(FX_RV_HPF), NOK}},   /* (no RETURN: unity, fx.c) */
+#define NFXB 6u                                 /* FX's banks */
+#define B_REV2 1u                               /* REVERB and REVERB 2 (0, 1): TYPE on ALGORITHM, its name large */
+#define B_COMP 5u                               /* FX's COMP page: its meter, MIX on ALGORITHM */
+static const bank_t BANK_FX[NFXB] = {
+    {"REVERB", {FXP(FX_RV_DECAY), FXP(FX_RV_PRE), FXP(FX_RV_SIZE), FXP(FX_RV_TONE)}},   /* (no RETURN: unity, fx.c) */
+    {"REVERB 2", {FXP(FX_RV_HPF), FXP(FX_RV_MOD), FXP(FX_RV_WIDTH), NOK}},
     {"DELAY", {FXP(FX_DL_TIME), FXP(FX_DL_FDBK), FXP(FX_DL_TONE), FXP(FX_DL_TAPE)}},
-    {"DELAY 2", {FXP(FX_DL_HPF), FXP(FX_DL_PING), NOK, NOK}},   /* (no RETURN: fixed, fx.c) */
+    {"DELAY 2", {FXP(FX_DL_HPF), FXP(FX_DL_PING), FXP(FX_DL_REV), NOK}},   /* (no RETURN: fixed, fx.c) */
     {"MASTER", {FXP(FX_M_DRIVE), FXP(FX_M_FILTER), FXP(FX_M_RESO), NOK}},
     {"COMP", {FXP(FX_M_THRESH), FXP(FX_M_RATIO), FXP(FX_M_ATTACK), FXP(FX_M_RELEASE)}}};
 static const struct { const bank_t *b; uint8_t n; const char *name; } VIEWS[NVIEW] = {
     {BANK_LIVE, 1, "LIVE"}, {BANK_SET, 1, "SETTINGS"}, {BANK_MIX, 1, "MIX"}, {BANK_STEPS, 1, "STEPS"},
-    {BANK_SOUND, NSOUND, "SOUND"}, {BANK_LFO, 1, "LFO"}, {BANK_FX, 5, "FX"}};
+    {BANK_SOUND, NSOUND, "SOUND"}, {BANK_LFO, 1, "LFO"}, {BANK_FX, NFXB, "FX"}};
 static const bank_t *bank_now(void) { return &VIEWS[ui.view].b[ui.bank[ui.view] % VIEWS[ui.view].n]; }
 
 static uint32_t is_mode(uint32_t p) { return p == P_WAVE || p == P_PMODE || p == P_NFILT || p == P_NENV; }
@@ -242,7 +245,7 @@ static int32_t pref_get(const pref_t *r)
         if (ui.held >= 0 && ui.view == V_SOUND) v = mot_get(pat, ch, prm, (uint32_t)ui.held);
         return (int32_t)(v != MOT_NONE ? v : mot_base(ch, prm));
     }
-    case R_FX: return kitx[X_FX + r->a];
+    case R_FX: return (int32_t)fx_get(kitx + X_FX, r->a);
     case R_TEMPO: return set.bpm;
     case R_SWING: return seq_song.p[pat].swing;
     case R_RATE: return seq_song.p[pat].rate;
@@ -322,6 +325,13 @@ static void pref_text(char *s, const pref_t *r)
             else if (t < 10000u) cat(catn(s, (int32_t)((t + 5u) / 10u)), "ms");
             else cat(catn(cat(catn(s, (int32_t)((t + 500u) / 10000u)), "."), (int32_t)((t + 500u) / 1000u % 10u)), "s");
         }
+        else if (r->a == FX_RV_HPF || r->a == FX_DL_HPF) {   /* HP IN: the cutoff fx.c's fx_hpa sets, 20 .. 1000 Hz */
+            uint32_t hz = (uint32_t)(20.0f * fx_exp2(fx_pot((uint32_t)v) * 5.644f) + 0.5f);
+            if (hz >= 1000u) cat(s, "1kHz"); else cat(catn(s, (int32_t)hz), "Hz");
+        }
+        else if (r->a == FX_RV_PRE) cat(catn(s, v), "ms");
+        else if (r->a == FX_RV_SIZE) cat(catn(s, v + 10), "%");   /* (10 .. 100 %) */
+        else if (r->a == FX_RV_MOD || r->a == FX_RV_WIDTH || r->a == FX_DL_REV) cat(catn(s, v), "%");
         else if (FX_P[r->a].names) cat(s, FX_P[r->a].names[v]);
         else catn(s, v);
         break;
@@ -359,8 +369,9 @@ static uint32_t knob_span(const pref_t *r)      /* the values a knob goes throug
 }
 #define ACC_SLOW 12u                            /* clicks a second: up to it one step a click */
 #define ACC_GAP 150u                            /* ms: a longer pause, a new turn (one step a click again) */
-static int32_t accel(uint32_t e, int32_t n, const pref_t *r)   /* the 4 knobs: one click, one step; spun, up to x8
-                                                 * (a quick turn crosses 0..127 in about one turn). The speed is the
+static int32_t accel(uint32_t e, int32_t n, const pref_t *r)   /* the 4 knobs: one click, one step; spun, up to x6
+                                                 * (a quick turn crosses 0..127 in about a turn and a half; x8 until
+                                                 * 2026-11-17, the user: a little less). The speed is the
                                                  * clicks over the time since the last ones, so a long main loop (a redraw)
                                                  * does not hide it (until 2026-11-12: clicks under 60 ms apart, rarely) */
 {
@@ -371,8 +382,8 @@ static int32_t accel(uint32_t e, int32_t n, const pref_t *r)   /* the 4 knobs: o
     if (v > 200u) v = 200u;
     ui.enc_rate[e] = (ui.enc_rate[e] + v) / 2u; /* (smoothed) */
     if (span < 32u || ui.enc_rate[e] <= ACC_SLOW) return n;
-    m = 1u + (ui.enc_rate[e] - ACC_SLOW) / 4u;  /* 16 a second x2, 24 x4, 40 x8 */
-    if (m > span / 16u) m = span / 16u;
+    m = 1u + (ui.enc_rate[e] - ACC_SLOW) / 4u;  /* 16 a second x2, 24 x4, 32 x6 */
+    if (m > span * 3u / 64u) m = span * 3u / 64u;   /* (128 values: x6; fewer, less) */
     return n * (int32_t)m;
 }
 static int32_t step_param(uint32_t p, int32_t v, int32_t e)   /* a patch value turned e clicks */
@@ -416,7 +427,7 @@ static void pref_set(const pref_t *r, int32_t e)
         return;
     }
     case R_FX:
-        v = kitx[X_FX + r->a];
+        v = (int32_t)fx_get(kitx + X_FX, r->a);
         if (r->a == FX_M_FILTER && v != 64 && ((v < 64) != (v + e < 64) || v + e == 64) && fm1_ms - ui.djf_t > 350u) {
             v = 64;                             /* across: it stops at OFF; a pause, then on to the other side */
             ui.djf_t = fm1_ms;
@@ -427,7 +438,7 @@ static void pref_set(const pref_t *r, int32_t e)
             v += e;
         }
         v = v < 0 ? 0 : v > FX_P[r->a].max ? FX_P[r->a].max : v;
-        kitx[X_FX + r->a] = (uint8_t)v;
+        fx_set(kitx + X_FX, r->a, (uint32_t)v);
         if (r->a == FX_M_COMP) fx_comp_knob((uint32_t)v);   /* (one knob: the details follow) */
         kit_edited = 1;
         fx_apply();
@@ -685,18 +696,23 @@ static void ask(uint32_t act, uint32_t a, uint32_t b, const char *q)
     cat(ui.ask_q, q);
 }
 static void ask_yes(void);
+static void bk_yes(void);                       /* (backup.c: YES to REPLACE ALL SAVES?) */
 
 /* ---- the sound library: EDIT's last bank, a list. SELECT a row (ALGORITHM: 8 at a time), heard at once on the channel
  * chosen, in the pattern too (motion.c mot_prev) without changing it; SEL loads it there (with its name); GLO + SEL
  * saves the channel's sound into a user row (from a factory one: the first free); GLO + REC deletes a user row */
 #define LIB_ROWS (SND_LIB_N + LIB_USER)
 static uint32_t lib_on(void) { return ui.view == V_SOUND && ui.bank[V_SOUND] % NSOUND == B_LIB && one_ch(); }
+static void ui_backup_done(uint32_t ok)          /* the computer took a backup (backup.c DONE): as a gesture's result */
+{
+    big("BACKUP", ok ? "SENT" : "FAILED", !ok);
+}
 static void big(const char *a, const char *b, uint32_t grey)   /* what a gesture did: two words, big, for 1 s (GLO, HOME) */
 {
     uint32_t i;
-    for (i = 0; i < 7u && a[i]; i++) ui.big_l1[i] = a[i];
+    for (i = 0; i < 9u && a[i]; i++) ui.big_l1[i] = a[i];
     ui.big_l1[i] = 0;
-    for (i = 0; i < 7u && b[i]; i++) ui.big_l2[i] = b[i];
+    for (i = 0; i < 9u && b[i]; i++) ui.big_l2[i] = b[i];
     ui.big_l2[i] = 0;
     ui.big_grey = (uint8_t)grey;
     ui.touch_until = 0;
@@ -822,7 +838,7 @@ static void enc_left(uint32_t e, int32_t n)
     if (ui.view == V_SET) { if (e == ENC_ALGORITHM) list_value(n); return; }
     if (e == ENC_PRESETS) {
         int32_t i;
-        if (ui.view == V_FX && ui.bank[V_FX] % 5u == B_COMP) {   /* COMP: the detector's high-pass */
+        if (ui.view == V_FX && ui.bank[V_FX] % NFXB == B_COMP) {   /* COMP: the detector's high-pass */
             int32_t v = (int32_t)kitx[X_FX + FX_M_SCHP] + (n > 0 ? 1 : -1);
             kitx[X_FX + FX_M_SCHP] = (uint8_t)(v < 0 ? 0 : v > 3 ? 3 : v);
             kit_edited = 1;
@@ -840,7 +856,14 @@ static void enc_left(uint32_t e, int32_t n)
         }
         return;
     }
-    if (e == ENC_ALGORITHM && ui.view == V_FX && ui.bank[V_FX] % 5u == B_COMP) {   /* COMP: MIX, dry / wet */
+    if (e == ENC_ALGORITHM && ui.view == V_FX && ui.bank[V_FX] % NFXB <= B_REV2) {   /* REVERB, REVERB 2: TYPE */
+        int32_t v = (int32_t)fx_get(kitx + X_FX, FX_RV_TYPE) + (n > 0 ? 1 : -1);
+        fx_set(kitx + X_FX, FX_RV_TYPE, (uint32_t)(v < 0 ? 0 : v >= RV_NTYPE ? RV_NTYPE - 1 : v));
+        kit_edited = 1;
+        fx_apply();
+        return;
+    }
+    if (e == ENC_ALGORITHM && ui.view == V_FX && ui.bank[V_FX] % NFXB == B_COMP) {   /* COMP: MIX, dry / wet */
         int32_t v = (int32_t)kitx[X_FX + FX_M_MIX] + 2 * n;
         kitx[X_FX + FX_M_MIX] = (uint8_t)(v < 0 ? 0 : v > 127 ? 127 : v);
         kit_edited = 1;
@@ -960,6 +983,13 @@ static void clear_now(void)                     /* GLO + REC */
         big_n("CLEAR", "STEP ", ui.held + 1);
         return;
     }
+    if (ui.view == V_MIX) {                     /* MIX: the kit playing, not the pattern (the user, 2026-11-16) */
+        char q[20];
+        if (!(kits_used >> kit_cur & 1u)) { say("EMPTY KIT"); return; }
+        cat(catn(cat(q, "ERASE KIT "), (int32_t)kit_cur + 1), "?");
+        ask(A_KIT_ERASE, kit_cur, 0, q);
+        return;
+    }
     if (ui.view == V_SOUND && one_ch()) { mot_clear(pat, set.ch); lfo_clear_ch(pat, set.ch); big("CLEAR", "MOTION", 0); return; }
     if (ui.view == V_STEPS && one_ch()) {
         if (ch_used(pat, set.ch)) ask(A_CLEAR_TRACK, set.ch, 0, "CLEAR THE CHANNEL?");
@@ -980,12 +1010,14 @@ static void ask_yes(void)
     case A_CLEAR_PAT: track_clear(a, DRUM_NCH); big("CLEAR", "PATTERN", 0); break;
     case A_CLEAR_TRACK: track_clear(pat, a); big("CLEAR", kit.ch[a], 0); break;
     case A_KIT_SAVE: if (kit_store(a)) big("SAVE", "FAILED", 1); else big_n("SAVED", "KIT ", (int32_t)a + 1); break;
+    case A_RESTORE: bk_yes(); break;
+    case A_KIT_ERASE: if (kit_erase(a)) big("ERASE", "FAILED", 1); else big_n("ERASED", "KIT ", (int32_t)a + 1); break;
     case A_LIB_SAVE: lib_store(a); break;
     case A_FACTORY:
         kit_stage_pat = 0xFFu;                  /* (a staged copy of one: not taken now) */
         for (k = 0; k < DRUM_NKITS; k++) { kit_from8(&kits[k].k, &DRUM_KITS[k]); snd_x_defaults(kits[k].x); }
-        kits_used |= (uint8_t)((1u << DRUM_NKITS) - 1u);
-        kw_on &= (uint8_t)~((1u << DRUM_NKITS) - 1u);   /* (their edits go; the one playing keeps its own, a *) */
+        kits_used |= (uint16_t)((1u << DRUM_NKITS) - 1u);
+        kw_on &= (uint16_t)~((1u << DRUM_NKITS) - 1u);   /* (their edits go; the one playing keeps its own, a *) */
         say(snd_save() ? "SAVE FAILED" : "FACTORY KITS BACK");
         break;
     }
@@ -1265,7 +1297,7 @@ static void kit_say(void) { char s[12]; catn(cat(s, "KIT "), (int32_t)kit_cur + 
 static void kit_changed(void)                   /* the kit changed by itself: said; not an undo step; no question on it */
 {
     undo_rebase();
-    if (ui.ask == A_KIT_SAVE) ui.ask = 0;       /* ("REPLACE KIT?" was about the kit before) */
+    if (ui.ask == A_KIT_SAVE || ui.ask == A_KIT_ERASE) ui.ask = 0;   /* ("REPLACE KIT?", "ERASE KIT 3?": about the kit before) */
     kit_say();
 }
 static void kit_follow(void)                    /* each loop, before the input */
@@ -1334,7 +1366,8 @@ static void ui_input(void)
             ev = 1;
             if (i == ENC_SELECT || i == ENC_ALGORITHM || i == ENC_PRESETS) {
                 undo_event(UK_ENC + i, 1000u, i == ENC_PRESETS ? (ui.view == V_FX ? "SC HPF" : "LENGTH") :
-                           i == ENC_ALGORITHM ? (ui.view == V_FX ? "MIX" : ui.held >= 0 ? "COND" : "SHIFT") : "EDIT");
+                           i == ENC_ALGORITHM ? (ui.view == V_FX ? (ui.bank[V_FX] % NFXB <= B_REV2 ? "TYPE" : "MIX") :
+                                                 ui.held >= 0 ? "COND" : "SHIFT") : "EDIT");
                 enc_left(i, n);
             } else {
                 const pref_t *r = &bank_now()->k[(i - ENC_KNOB1) & 3u];
@@ -1391,7 +1424,7 @@ static int32_t guide_btn(void)                  /* a button held alone for 250 m
 typedef struct { const char *k, *a; } grow_t;
 static uint32_t guide_rows(uint32_t b, grow_t *r)   /* with the button held, here: the key, what it does; most used first */
 {
-    static char rec_a[12];
+    static char rec_a[16];
     uint32_t n = 0;
     switch (b) {                                /* TAP: what a press does; the rest, what goes with it */
     case BTN_HOME:
@@ -1445,7 +1478,8 @@ static uint32_t guide_rows(uint32_t b, grow_t *r)   /* with the button held, her
     } else if (ui.view == V_SOUND && one_ch()) {
         r[n++] = (grow_t){"BLACK", "PASTE"}; r[n++] = (grow_t){"REC", "ALL MOTION"}; r[n++] = (grow_t){"KNOB", "ITS MOTION"};
     } else {
-        catn(cat(rec_a, "CLEAR P"), (int32_t)cur_pat() + 1);
+        if (ui.view == V_MIX) catn(cat(rec_a, "ERASE KIT "), (int32_t)kit_cur + 1);
+        else catn(cat(rec_a, "CLEAR P"), (int32_t)cur_pat() + 1);
         r[n++] = (grow_t){"WHITE", ui.view == V_MIX ? "SAVE KIT" : "PASTE"}; r[n++] = (grow_t){"REC", rec_a};
     }
     return n;
@@ -1546,7 +1580,7 @@ static void draw_bubble(const pref_t *r)        /* over the page: the knob's nam
     box(4, 2, 232, MID_C - 4, B_ACT);
     txc(120, 7, &FONT_LB, pref_name(r), B_SEC, B_ACT);
     pref_text(s, r);
-    if (ui.view == V_FX && ui.bank[V_FX] % 5u == B_COMP) {   /* COMP: the value smaller, and the reduction as you turn */
+    if (ui.view == V_FX && ui.bank[V_FX] % NFXB == B_COMP) {   /* COMP: the value smaller, and the reduction as you turn */
         int32_t g10 = (int32_t)(ui.gr * 10.0f + 0.5f), gw = (int32_t)(ui.gr * 200.0f / 24.0f);   /* (the meter's 24 dB) */
         txc(120, 23, &FONT_BIG, s, B_TXT, B_ACT);
         cv_rect(20, 78, 200, 6, B_TRACK);
@@ -1711,6 +1745,17 @@ static void draw_lib(void)                      /* the library's list over both 
         cv_blit(0, half * LIST_STRIP);
     }
 }
+static void draw_ask(void)                      /* a question to confirm: on one line (31 px), under it NO and YES big
+                                                 * (38 px), each under its button's name (31 px, grey) in the panel's
+                                                 * order: HOME on the left of SEL (the user, 2026-11-16: 22 px was small) */
+{
+    box(4, 2, 232, 132, B_ACT);
+    txc(120, 8, &FONT_ST, ui.ask_q, B_TXT, B_ACT);
+    txc(64, 46, &FONT_ST, "HOME", B_SEC, B_ACT);
+    txc(64, 80, &FONT_V, "NO", B_TXT, B_ACT);
+    txc(176, 46, &FONT_ST, "SEL", B_SEC, B_ACT);
+    txc(176, 80, &FONT_V, "YES", B_TXT, B_ACT);
+}
 static uint32_t chain_making(void) { return ui.view == V_LIVE && ui.chain_key >= 0 && ui.chain_n >= 2u; }
 static void draw_mid(uint32_t meters_only)      /* meters_only: send just the meters' rows (LIVE 70.., MIX ..109) */
 {
@@ -1721,9 +1766,7 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
     if ((c = (uint32_t)guide_btn()) != ~0u) {   /* a button held: its guide */
         draw_guide(c);
     } else if (ui.ask) {
-        box(6, 24, 228, 88, B_ACT);
-        txc(120, 38, &FONT_SB, ui.ask_q, B_TXT, B_ACT);
-        txc(120, 74, &FONT_LB, "SEL YES   HOME NO", B_SEC, B_ACT);
+        draw_ask();
     } else switch (ui.view) {
     case V_LIVE:                                /* the pattern once, big: playing, next (blinking), the chain */
 #define LIVE_MY 55                              /* (the meters' top: under the next pattern's bar) */
@@ -1805,7 +1848,8 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
             txc(x + 10, 0, &FONT_LB, kit.ch[c], cur ? B_INK : (seq.mute >> c & 1u) ? B_REC : B_SEC, cur ? chc(c) : bg);
         }
         tx(6, 113, &FONT_LB, "KIT", B_SEC, B_BG);
-        for (k = 0; k < NKIT; k++) box(40 + (int32_t)k * 24, 110, 20, 20, k == kit_cur ? B_TXT : kits_used >> k & 1u ? B_USED : B_EMPTY);
+        for (k = 0; k < NKIT; k++)              /* (one a white key, in their order: 10 x 20, 12 apart) */
+            box(40 + (int32_t)k * 12, 110, 10, 20, k == kit_cur ? B_TXT : kits_used >> k & 1u ? B_USED : B_EMPTY);
         break;
     case V_STEPS:
         draw_mid_steps();
@@ -1841,7 +1885,7 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
         }
         break;
     case V_FX:
-        if (ui.bank[V_FX] % 5u == B_COMP) {     /* the reduction now, then MIX (ALGORITHM) */
+        if (ui.bank[V_FX] % NFXB == B_COMP) {     /* the reduction now, then MIX (ALGORITHM) */
             int32_t gw = (int32_t)(ui.gr * 224.0f / 24.0f), mix = kitx[X_FX + FX_M_MIX];
             tx(8, 4, &FONT_LB, "GAIN REDUCTION", B_SEC, B_BG);
             {
@@ -1861,10 +1905,14 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
             txr(232, 100, &FONT_V20, FX_SCHP_N[kitx[X_FX + FX_M_SCHP] & 3u], kitx[X_FX + FX_M_SCHP] ? B_TXT : B_SEC, B_BG);
             break;
         }
-        tx(8, -4, &FONT_P, bank_now()->name, B_TXT, B_BG);   /* the bank, then all five (the sends: MIX, EDIT) */
-        for (k = 0; k < 5u; k++) {
+        if (ui.bank[V_FX] % NFXB <= B_REV2) {   /* the reverb's pages: its type, large (ALGORITHM) */
+            tx(8, -4, &FONT_P, FX_RVT_N[fx_get(kitx + X_FX, FX_RV_TYPE)], B_TXT, B_BG);
+            txr(232, 8, &FONT_LB, "ALGORITHM", B_SEC, B_BG);
+        } else
+            tx(8, -4, &FONT_P, bank_now()->name, B_TXT, B_BG);   /* the bank, then all six (the sends: MIX, EDIT) */
+        for (k = 0; k < NFXB; k++) {
             int32_t x = 2 + (int32_t)(k % 3u) * 79, y = 60 + (int32_t)(k / 3u) * 38;
-            uint32_t on = k == ui.bank[V_FX] % 5u;
+            uint32_t on = k == ui.bank[V_FX] % NFXB;
             box(x, y, 77, 34, on ? B_ACT : B_BOX);
             txc(x + 38, y + 9, on ? &FONT_SB : &FONT_LB, BANK_FX[k].name, on ? B_TXT : B_SEC, on ? B_ACT : B_BOX);
         }
@@ -1892,7 +1940,7 @@ static uint32_t mid_hash(uint32_t meters)      /* meters: the hits' meters too (
     }
     switch (ui.view) {
     case V_FX:
-        h = hsh(hsh(h, kitx[X_FX + FX_M_MIX]), kitx[X_FX + FX_M_SCHP]);
+        h = hsh(hsh(hsh(h, kitx[X_FX + FX_M_MIX]), kitx[X_FX + FX_M_SCHP]), kitx[X_FX + FX_RV_TYPE]);
         if (meters) h = hsh(h, (uint32_t)(ui.gr * 2.0f));
         break;
     case V_LIVE:
@@ -2085,7 +2133,7 @@ static void ui_draw(void)
         return;
     }
     if ((h = top_hash()) != ui.h_top) { ui.h_top = h; draw_top(); }
-    if (ui.view == V_FX && ui.bank[V_FX] % 5u == B_COMP) {   /* the meter: the ISR's peak, held, falling 20 dB/s */
+    if (ui.view == V_FX && ui.bank[V_FX] % NFXB == B_COMP) {   /* the meter: the ISR's peak, held, falling 20 dB/s */
         float p = -fx_gr;
         fx_gr = 0.0f;
         ui.gr -= (float)(fm1_ms - ui.gr_t) * 0.02f;
@@ -2245,8 +2293,9 @@ static void crash_foot(uint32_t left)           /* the time left, on its own str
     txr(232, 3, &FONT_SB, s, B_TXT, B_BG);
     cv_blit(0, 212);
 }
-static void crash_draw(uint32_t pc, uint32_t rets, uint32_t emu, uint32_t dbg, uint32_t sp, uint32_t core, uint32_t up_ms, uint32_t count)
+static void crash_draw(uint32_t pc, uint32_t rets, uint32_t emu, uint32_t dbg, uint32_t sp, uint32_t core, uint32_t up_ms, uint32_t count, uint32_t vec)
 {
+    static const char C1[][15] = {"CORE 1", "CORE 1 BAD JOB", "CORE 1 LATE", "CORE 1 NO START", "CLOCK NOT 320"};   /* (platform.c fm1_c1_fail) */
     uint32_t half;
     char s[32], *p;
     idle_ok = 0;                                /* (no MIDI from the screen's waits now) */
@@ -2255,7 +2304,7 @@ static void crash_draw(uint32_t pc, uint32_t rets, uint32_t emu, uint32_t dbg, u
         cv_oy = -(int32_t)(half * 106u);
         cv_rect(0, 0, 240, 32, B_REC);
         tx(8, -1, &FONT_ST, APP_NAME " CRASH", B_INK, B_REC);
-        crash_row(36, "CAUSE", crash_cause(emu, dbg));
+        crash_row(36, "CAUSE", (vec & 0xFF00u) == 0xC100u ? C1[(vec & 0xFFu) < 5u ? vec & 0xFFu : 0u] : crash_cause(emu, dbg));
         hex8(s, pc); crash_row(58, "PC", s);
         hex8(s, rets); crash_row(80, "CALLER", s);
         hex8(cat(hex8(s, emu), "/"), dbg); crash_row(102, "EMU/DBG", s);

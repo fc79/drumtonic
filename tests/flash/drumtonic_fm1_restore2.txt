@@ -1,0 +1,7 @@
+# Drumtonic on the FM-1: after tests/flash/drumtonic_fm1_restore.txt (same HOST_FLASH): the restart loads the backup's
+# saves: the tempo saved before it (120, not the 130 saved after), no library sound
+50 expect 120 bpm
+50 expect 0 libused 0
+50 expect 0 libused 1
+50 expect 0 bkstate
+200 end

@@ -11,15 +11,29 @@ the FM-1 restarts and the installed identity is checked.
 
   fm1_install.py PACKAGE.fwsc [--port NAME] [--yes] [--force]
   fm1_install.py --info [--port NAME]
+  fm1_install.py --backup [FILE.dtbak] [--port NAME]
+  fm1_install.py --restore FILE.dtbak [--port NAME]
+  fm1_install.py --check-backup FILE.dtbak
+
+--backup saves Drumtonic's saves (kits, patterns, the sound library, the
+settings: what was saved with SAVE, not the edits not saved yet) into one file,
+by default drumtonic-backup-DATE-TIME.dtbak here; it writes nothing on the FM-1.
+--restore puts a backup back: the FM-1 asks REPLACE ALL SAVES? on its screen
+(SEL yes, HOME no), writes every record, empties what the backup had empty,
+then restarts. Its saves now are replaced: take a backup first if they matter.
+--check-backup checks a backup file and lists what is in it.
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write. Needs mido with python-rtmidi.
 
-Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
+Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments, package or backup file,
 3 FM-1 not found, 4 connection lost or the device stopped, 5 timeout (no
-loader / no restart), 6 wrong model, another identity after the install, or the
+loader / no restart), 6 wrong model (a backup: not Drumtonic, or one without
+backup), another identity after the install, or the
 FM-1 is in the update mode of another firmware (only SLOOP's own loader,
-ota-FM-1_9XX or ota-SMK-37 Pro_9XX, is resumed).
+ota-FM-1_9XX or ota-SMK-37 Pro_9XX, is resumed). A restore: 1 also when HOME
+said no on the FM-1, 4 when it failed (the FM-1 then keeps its saves as they
+were, or some from the backup: run the restore again).
 
 Packages: 20 interleave blocks (FM-1, SLOOP, SMK-37 Pro up to v011) or more (the stock SMK-37 Pro
 v016 has 36: the extra markers are 0x7D); the count is detected and checked with the files' CRCs.
@@ -45,10 +59,12 @@ OWN_LOADER_RE = re.compile(r"ota-(FM-1|SMK-37 Pro|SMK-37 Elite|MKE-P37)_9\d\d", 
 # seconds; the tests shorten them
 DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0, "retry": 1.0,
          "poll": 1.0, "hs": 1.0, "idle_check": 8.0, "idle_write": 180.0,
-         "wait_loader": 30.0, "wait_reboot": 40.0}
+         "wait_loader": 30.0, "wait_reboot": 40.0, "bk_reply": 1.0, "bk_write": 5.0, "bk_poll": 0.25,
+         "bk_ask": 65.0}
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
-        "noloader": 5, "noreturn": 5, "mismatch": 6, "foreign": 6}
+        "noloader": 5, "noreturn": 5, "mismatch": 6, "foreign": 6, "nobackup": 6, "badbackup": 2, "exists": 2,
+        "norestore": 6, "cancelled": 1, "restore": 4}
 
 
 class InstallError(Exception):
@@ -433,6 +449,314 @@ class Updater:
         return self.verify(product, step)
 
 
+# ---------------------------------------------------------------- backup ---
+# Drumtonic's saves over MIDI (firmware/src/backup.c has the wire format): the computer pulls every record as the
+# flash holds it, [magic][length][crc32] then the bytes, and keeps them in one file:
+#   "DTBACKUP", format u16 (1), header length u16, the header (UTF-8 JSON: device, version, proto, date, and the
+#   records: id, name, len, in id order), the records' bytes one after the other, then the zlib crc32 of all before
+# A record of len 0 is an empty area (a restore leaves it empty). web/fm1ota.js writes and reads the same file.
+
+DRUMTONIC_ID = "FM-1_987"
+BK_INFO, BK_READ, BK_DONE = 0x60, 0x61, 0x62
+BK_BEGIN, BK_STATE, BK_WRITE, BK_COMMIT, BK_ABORT = 0x63, 0x64, 0x65, 0x66, 0x67
+BS_IDLE, BS_ASK, BS_YES, BS_NO, BS_FAIL, BS_DONE = range(6)
+BK_TAG = b"DB"
+BK_FILE_MAGIC, BK_FILE_FORMAT = b"DTBACKUP", 1
+BK_STATUS = {1: "no such record", 2: "past the record's end", 3: "the flash failed", 4: "a bad ask"}
+STORE_MAGIC, BLOBS_MAGIC, SLOT_MAGIC = 0x3733544E, 0x53424C42, 0x544F4C53
+BK_MAGIC = {"SETS": STORE_MAGIC, "KIT1": STORE_MAGIC, "SONG": BLOBS_MAGIC ^ STORE_MAGIC,
+            "LIB0": SLOT_MAGIC ^ STORE_MAGIC, "LIB1": SLOT_MAGIC ^ STORE_MAGIC, "KIT2": SLOT_MAGIC ^ STORE_MAGIC}
+
+
+def bk_message(cmd, body):
+    m = bytes([0x00, 0x59, cmd, len(body) & 0xFF, (len(body) >> 8) & 0xFF, (len(body) >> 16) & 0xFF]) + bytes(body)
+    return b"\xF0" + pack7(m + bytes([~sum(body) & 0xFF])) + b"\xF7"
+
+
+def bk_parse(pkt, cmd):
+    """an answer to cmd: its body (from the tag on), or None"""
+    if len(pkt) < 2 or pkt[0] != 0xF0 or pkt[-1] != 0xF7:
+        return None
+    u = unpack7(pkt[1:-1])
+    if len(u) < 9 or u[:3] != bytes([0x00, 0x59, cmd]):
+        return None
+    n = int.from_bytes(u[3:6], "little")
+    body = u[6:6 + n]
+    if len(u) < 7 + n or len(body) != n or ~sum(body) & 0xFF != u[6 + n] or body[:2] != BK_TAG:
+        return None
+    return body
+
+
+def bk_record_check(name, rec):
+    """what is wrong with a record's bytes (header, length, crc32), or None"""
+    import zlib
+    if len(rec) < 12:
+        return "shorter than its header"
+    magic, n, crc = (int.from_bytes(rec[k:k + 4], "little") for k in (0, 4, 8))
+    if name in BK_MAGIC and magic != BK_MAGIC[name]:
+        return "not Drumtonic's (magic)"
+    if n + 12 != len(rec):
+        return "its length"
+    if zlib.crc32(rec[12:]) != crc:
+        return "its crc32"
+    return None
+
+
+def bk_ask(link, cmd, body, tries=3, wait=None):
+    """one ask, its answer's body (tag on); None if no valid answer after tries (each waits wait s, or bk_reply)"""
+    for _ in range(tries):
+        link.drain()
+        if not link.send(bk_message(cmd, body)):
+            raise InstallError("lost", "the FM-1 was disconnected")
+        end = time.monotonic() + (DELAY["bk_reply"] if wait is None else wait)
+        while (left := end - time.monotonic()) > 0:
+            p = link.read(left)
+            if p is None:
+                break
+            a = bk_parse(p, cmd)
+            if a is not None:
+                return a
+        if link.lost:
+            raise InstallError("lost", "the FM-1 was disconnected")
+    return None
+
+
+def bk_info(link):
+    a = bk_ask(link, BK_INFO, BK_TAG)
+    if a is None:
+        raise InstallError("nobackup", "this Drumtonic has no backup over MIDI: install a newer one first")
+    if len(a) < 10 or a[2] not in (1, 2):   # (2: the restore too; the backup is the same)
+        raise InstallError("nobackup", f"this Drumtonic's backup speaks protocol {a[2] if len(a) > 2 else '?'}, "
+                                       "this tool 1 and 2: use a newer fm1_install.py")
+    chunk, gen, count = int.from_bytes(a[3:5], "little"), int.from_bytes(a[5:9], "little"), a[9]
+    if len(a) != 10 + 16 * count or not 1 <= chunk <= MAXDATA:
+        raise InstallError("badreq", "the FM-1's backup table is not valid")
+    recs = []
+    for r in range(count):
+        e = a[10 + 16 * r:26 + 16 * r]
+        rec = {"id": e[0], "name": e[2:6].decode("latin-1"), "cap": int.from_bytes(e[6:10], "little"),
+               "len": int.from_bytes(e[10:14], "little")}
+        if rec["id"] != r or rec["len"] > rec["cap"] or bool(e[1] & 1) != bool(rec["len"]) or (rec["len"] and rec["len"] < 12):
+            raise InstallError("badreq", f"the FM-1's backup table is not valid (record {r})")
+        recs.append(rec)
+    return chunk, gen, recs, a[2]
+
+
+def bk_pull(link, chunk, gen, rec, progress):
+    """a record's bytes, a chunk at a time; None if a save came in between (gen changed)"""
+    out = bytearray()
+    while len(out) < rec["len"]:
+        off, n = len(out), min(chunk, rec["len"] - len(out))
+        a = bk_ask(link, BK_READ, BK_TAG + bytes([rec["id"]]) + off.to_bytes(4, "little") + n.to_bytes(2, "little"))
+        if a is None:
+            raise InstallError("stopped", f"the FM-1 stopped answering during the backup ({rec['name']} at {off})")
+        if len(a) < 14 or a[2] != rec["id"] or int.from_bytes(a[3:7], "little") != off:   # (a refusal: 14 bytes)
+            raise InstallError("badreq", f"a wrong answer during the backup ({rec['name']} at {off})")
+        if int.from_bytes(a[10:14], "little") != gen:
+            return None
+        if a[9]:
+            if a[9] == 2:                       # past the record's end: a save changed it (pull everything again)
+                return None
+            raise InstallError("badreq", f"the FM-1 refused {rec['name']} at {off}: {BK_STATUS.get(a[9], a[9])}")
+        if int.from_bytes(a[7:9], "little") != n or len(a) != 14 + n:
+            raise InstallError("badreq", f"a wrong answer during the backup ({rec['name']} at {off})")
+        out += a[14:]
+        progress(n)
+    return bytes(out)
+
+
+def backup(dev, progress=lambda done, total: None, tries=3):
+    """every record of the Drumtonic on dev.link -> [{"id", "name", "len", "data"}]; pulled again from the start if a
+    save lands meanwhile (up to tries times)"""
+    if dev.id.text != DRUMTONIC_ID:
+        raise InstallError("model", f"the device is {dev.id.text}: a backup needs Drumtonic ({DRUMTONIC_ID})")
+    link = dev.link
+    for _ in range(tries):
+        chunk, gen, recs, _ = bk_info(link)
+        total, done = sum(r["len"] for r in recs), [0]
+
+        def step(n):
+            done[0] += n
+            progress(done[0], total)
+        for r in recs:
+            r["data"] = bk_pull(link, chunk, gen, r, step) if r["len"] else b""
+            if r["data"] is None:
+                break
+            if r["len"] and (bad := bk_record_check(r["name"], r["data"])):
+                bk_ask(link, BK_DONE, BK_TAG + b"\x01")
+                raise InstallError("badreq", f"the FM-1 sent {r['name']} damaged: {bad}")
+        else:
+            if bk_info(link)[1] != gen:         # a save after the last READ (a SAVE writes several records): again
+                continue
+            bk_ask(link, BK_DONE, BK_TAG + b"\x00")
+            return recs
+    bk_ask(link, BK_DONE, BK_TAG + b"\x01")
+    raise InstallError("stopped", "the FM-1 kept saving during the backup: stop editing on it and try again")
+
+
+def backup_bytes(recs, device, version, date):
+    """the backup file's bytes"""
+    import json
+    import zlib
+    head = json.dumps({"device": device, "version": version, "proto": 1, "date": date,
+                       "records": [{"id": r["id"], "name": r["name"], "len": len(r["data"])} for r in recs]},
+                      separators=(",", ":")).encode()
+    out = BK_FILE_MAGIC + BK_FILE_FORMAT.to_bytes(2, "little") + len(head).to_bytes(2, "little") + head
+    out += b"".join(r["data"] for r in recs)
+    return out + zlib.crc32(out).to_bytes(4, "little")
+
+
+def read_backup(raw):
+    """a backup file's bytes -> (header dict, records with "data"); InstallError("badbackup") if anything is off"""
+    import json
+    import zlib
+
+    def bad(why):
+        return InstallError("badbackup", f"not a Drumtonic backup, or a damaged one: {why}")
+    if len(raw) < 16 or raw[:8] != BK_FILE_MAGIC:
+        raise bad("no DTBACKUP at the start")
+    if zlib.crc32(raw[:-4]) != int.from_bytes(raw[-4:], "little"):
+        raise bad("its crc32")
+    fmt, hl = int.from_bytes(raw[8:10], "little"), int.from_bytes(raw[10:12], "little")
+    if fmt != BK_FILE_FORMAT:
+        raise InstallError("badbackup", f"a backup of format {fmt}: use a newer fm1_install.py")
+    try:
+        head = json.loads(raw[12:12 + hl].decode())
+        recs, at = [], 12 + hl
+        for r in head["records"]:
+            n = int(r["len"])
+            recs.append({"id": int(r["id"]), "name": str(r["name"]), "len": n, "data": raw[at:at + n]})
+            at += n
+    except (ValueError, KeyError, TypeError) as e:
+        raise bad(f"its header ({e})")
+    if at != len(raw) - 4:
+        raise bad("its length")
+    if [r["id"] for r in recs] != list(range(len(recs))) or len({r["name"] for r in recs}) != len(recs):
+        raise bad("its list of records")
+    for r in recs:
+        if r["len"] < 0 or r["name"] not in BK_MAGIC:
+            raise bad(f"its list of records ({r['name']})")
+        if r["len"] and (why := bk_record_check(r["name"], r["data"])):
+            raise bad(f"{r['name']}: {why}")
+    return head, recs
+
+
+BK_WSTATUS = {2: "not the bytes it expected", 3: "the flash failed", 4: "a bad ask",
+              6: "not now (it stopped waiting: 10 s without a message?)", 7: "the record is not the one listed"}
+
+
+def bk_state(link):
+    """the restore's state on the FM-1 (BS_*) and the records written (bit id); None if no answer"""
+    a = bk_ask(link, BK_STATE, BK_TAG)
+    return (a[2], a[3]) if a is not None and len(a) == 4 else None
+
+
+def bk_abort(link):
+    try:
+        bk_ask(link, BK_ABORT, BK_TAG, tries=1)
+    except InstallError:
+        pass
+
+
+def restore(dev, recs, progress=lambda done, total: None, step=lambda what: None):
+    """put a backup's records (read_backup) back on the Drumtonic on dev.link: the list first, the FM-1 asks REPLACE ALL
+    SAVES? (step("ask")), then every record (progress), then COMMIT: the FM-1 restarts. True: COMMIT answered 0; False:
+    no answer to it (the FM-1 may have restarted before it left: see restore_done). InstallError("cancelled") if HOME
+    said no (or 60 s went by)"""
+    if dev.id.text != DRUMTONIC_ID:
+        raise InstallError("model", f"the device is {dev.id.text}: a restore needs Drumtonic ({DRUMTONIC_ID})")
+    link = dev.link
+    chunk, _, info, proto = bk_info(link)
+    if proto < 2:
+        raise InstallError("norestore", "this Drumtonic makes backups but cannot take one back: install a newer one first")
+    if [r["name"] for r in recs] != [r["name"] for r in info]:
+        raise InstallError("badbackup", "this backup's records (" + " ".join(r["name"] for r in recs) + ") are not this "
+                           "Drumtonic's (" + " ".join(r["name"] for r in info) + "): a backup of another version")
+    body = bytearray(BK_TAG + bytes([len(recs)]))
+    for r, f in zip(recs, info):
+        d = r["data"]
+        if len(d) > f["cap"]:
+            raise InstallError("badbackup", f"the backup's {r['name']} ({len(d)} B) does not fit this Drumtonic's ({f['cap']} B)")
+        body += bytes([r["id"], 0, 0, 0]) + len(d).to_bytes(4, "little") + (d[8:12] if d else bytes(4)) + \
+            (d[12:16] if len(d) >= 16 else bytes(4))
+    a = bk_ask(link, BK_BEGIN, bytes(body), tries=1)   # (once: a second BEGIN while asking would be "busy")
+    if a is None:
+        st = bk_state(link)
+        if st is None or st[0] != BS_ASK:
+            raise InstallError("stopped", "the FM-1 did not answer the restore")
+    elif len(a) != 4:
+        raise InstallError("badreq", "a wrong answer to the restore")
+    elif a[2] == 4:
+        name = recs[a[3]]["name"] if a[3] < len(recs) else "?"
+        raise InstallError("badbackup", f"the FM-1 refused the backup's {name}: not a format this Drumtonic loads "
+                                        "(a backup of a newer version?)")
+    elif a[2] == 5:
+        raise InstallError("restore", "the FM-1 is busy with another restore: wait a minute, then try again")
+    elif a[2]:
+        raise InstallError("badreq", f"the FM-1 refused the restore (status {a[2]})")
+    step("ask")
+    try:                                        # the question: SEL yes, HOME no (60 s: no)
+        end = time.monotonic() + DELAY["bk_ask"]
+        while True:
+            st = bk_state(link)
+            if st is None:
+                raise InstallError("stopped", "the FM-1 stopped answering")
+            if st[0] == BS_YES:
+                break
+            if st[0] == BS_NO:
+                raise InstallError("cancelled", "the FM-1 said no: nothing was written")
+            if st[0] != BS_ASK or time.monotonic() > end:
+                bk_abort(link)
+                raise InstallError("restore", f"the FM-1 is not asking any more (state {st[0]}): nothing was written")
+            time.sleep(DELAY["bk_poll"])
+    except KeyboardInterrupt:
+        bk_abort(link)
+        raise
+    step("write")
+    total, done = sum(len(r["data"]) for r in recs), 0
+    try:
+        for r in recs:
+            d = r["data"]
+            for off in range(0, len(d), chunk):
+                n = min(chunk, len(d) - off)
+                a = bk_ask(link, BK_WRITE, BK_TAG + bytes([r["id"]]) + off.to_bytes(4, "little") +
+                           n.to_bytes(2, "little") + d[off:off + n], tries=1,
+                           wait=DELAY["bk_write"] if off + n == len(d) else None)   # (the last: after the flash write)
+                if a is None:
+                    raise InstallError("stopped", f"the FM-1 stopped answering during the restore ({r['name']} at {off})")
+                if len(a) != 11 or a[2] != r["id"] or int.from_bytes(a[3:7], "little") != off or \
+                        int.from_bytes(a[7:9], "little") != n:
+                    raise InstallError("badreq", f"a wrong answer during the restore ({r['name']} at {off})")
+                if a[9]:
+                    raise InstallError("restore", f"the FM-1 refused {r['name']} at {off}: {BK_WSTATUS.get(a[9], a[9])}")
+                done += n
+                progress(done, total)
+    except InstallError as e:
+        if e.code != "lost":
+            bk_abort(link)                      # (nothing more is written; the FM-1 goes on as it was)
+        raise
+    except KeyboardInterrupt:
+        bk_abort(link)
+        raise
+    try:                                        # COMMIT empties what the backup had empty (erases), then restarts: an
+        a = bk_ask(link, BK_COMMIT, BK_TAG, tries=1, wait=DELAY["bk_write"])   # answer lost to the restart is no failure
+    except InstallError:
+        return False
+    if a is None:
+        return False
+    if len(a) != 3 or a[2]:
+        bk_abort(link)
+        raise InstallError("restore", "the FM-1 could not finish the restore: " +
+                           {2: "a record missing", 3: "the flash failed"}.get(a[2] if len(a) == 3 else -1, "a wrong answer"))
+    return True
+
+
+def restore_done(dev):
+    """after the restart: the FM-1 back, its restore state idle (a fresh start); not restarted, it would read 2 or 4"""
+    st = bk_state(dev.link)
+    return st is not None and st[0] == BS_IDLE
+
+
 # ------------------------------------------------------------------- CLI ---
 
 def load_package(path, force):
@@ -535,8 +859,95 @@ class Progress:
             self.line = False
 
 
+def run_backup(a, up, out):
+    import os
+    path = a.backup or time.strftime("drumtonic-backup-%Y-%m-%d-%H%M.dtbak")
+    if os.path.exists(path):
+        raise InstallError("exists", f"{path} exists already: give another name")
+    dev = up.find()
+    if not dev:
+        raise not_found(up)
+    ver = f" version {dev.id.release}" if dev.id.release else ""
+    print(f"device:  {dev.id.text}{ver}  ({dev.name})", file=out)
+    prog = Progress(out)
+    try:
+        recs = backup(dev, lambda d, t: prog.put(f"reading {d * 100 // max(t, 1):3d}%"))
+    finally:
+        prog.end()
+        dev.link.close()
+    data = backup_bytes(recs, dev.id.text, dev.id.release, time.strftime("%Y-%m-%dT%H:%M:%S%z"))
+    tmp = path + ".part"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    print(f"saved:   {path}  ({len(data)} B: " + ", ".join(f"{r['name']} {len(r['data'])}" if r["data"] else f"{r['name']} empty" for r in recs) + ")",
+          file=out)
+    return 0
+
+
+def run_check_backup(a, out):
+    try:
+        raw = open(a.check_backup, "rb").read()
+    except OSError as e:
+        raise InstallError("badbackup", f"cannot read {a.check_backup}: {e.strerror}")
+    head, recs = read_backup(raw)
+    print(f"{a.check_backup}: a backup of {head.get('device')} version {head.get('version') or '?'}, {head.get('date')}", file=out)
+    for r in recs:
+        print(f"  {r['name']}  " + (f"{r['len']} B" if r["len"] else "empty"), file=out)
+    return 0
+
+
+def run_restore(a, up, out):
+    try:
+        raw = open(a.restore, "rb").read()
+    except OSError as e:
+        raise InstallError("badbackup", f"cannot read {a.restore}: {e.strerror}")
+    head, recs = read_backup(raw)
+    if head.get("device") != DRUMTONIC_ID:
+        raise InstallError("badbackup", f"{a.restore} is a backup of {head.get('device')}, not of Drumtonic ({DRUMTONIC_ID})")
+    print(f"backup:  {a.restore}  (version {head.get('version') or '?'}, {head.get('date')})", file=out)
+    dev = up.find()
+    if not dev:
+        raise not_found(up)
+    print(f"device:  {dev.id.text}" + (f" version {dev.id.release}" if dev.id.release else "") + f"  ({dev.name})", file=out)
+    prog = Progress(out)
+
+    def step(what):
+        prog.end()
+        print({"ask": "on the FM-1: REPLACE ALL SAVES?  SEL: yes, HOME: no",
+               "write": "writing: do not unplug the FM-1"}[what], file=out, flush=True)
+    try:
+        sure = restore(dev, recs, lambda d, t: prog.put(f"writing {d * 100 // max(t, 1):3d}%"), step)
+    except InstallError as e:
+        prog.end()
+        if e.code == "cancelled":
+            print("cancelled on the FM-1: nothing was written", file=out)
+            return EXIT["cancelled"]
+        raise
+    finally:
+        prog.end()
+        dev.link.close()
+    print("restarting", file=out, flush=True)
+    time.sleep(DELAY["reboot"])
+    back = up.wait_for(lambda i: i.text == DRUMTONIC_ID, DELAY["wait_reboot"])
+    if not back:
+        raise InstallError("noreturn", "the saves are written, but the FM-1 did not come back: power-cycle it")
+    try:
+        if not restore_done(back):
+            raise InstallError("restore", "the FM-1 did not finish the restore (no restart): run it again"
+                               if not sure else "the FM-1 did not restart after the restore: power-cycle it")
+    finally:
+        back.link.close()
+    print("done: the FM-1 has the backup's saves", file=out)
+    return 0
+
+
 def run(a, backend, out, ask):
     up = Updater(backend, a.port)
+    if a.backup is not None:
+        return run_backup(a, up, out)
+    if a.restore is not None:
+        return run_restore(a, up, out)
     if a.info:
         dev = up.find()
         if not dev:
@@ -579,10 +990,15 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
+    ap.add_argument("--backup", nargs="?", const="", metavar="FILE", help="save Drumtonic's saves into FILE (.dtbak)")
+    ap.add_argument("--restore", metavar="FILE", help="put a backup back on the FM-1 (it asks first, on its screen)")
+    ap.add_argument("--check-backup", metavar="FILE", help="check a backup file and list what is in it")
     a = ap.parse_args(argv)
-    if bool(a.info) == bool(a.package):
-        ap.error("give a PACKAGE.fwsc or --info")
+    if sum((bool(a.info), bool(a.package), a.backup is not None, a.restore is not None, a.check_backup is not None)) != 1:
+        ap.error("give a PACKAGE.fwsc, --info, --backup, --restore or --check-backup")
     try:
+        if a.check_backup is not None:
+            return run_check_backup(a, out)
         if backend is None:
             try:
                 backend = MidoBackend()
@@ -593,7 +1009,10 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
         print(f"error: {e}", file=sys.stderr)
         return EXIT.get(e.code, 1)
     except KeyboardInterrupt:
-        print("\ninterrupted: if the FM-1 is in update mode, run the install again to finish", file=sys.stderr)
+        why = {"restore": ": the FM-1 keeps the saves it has now (some may be the backup's): run the restore again",
+               "backup": "", "install": ": if the FM-1 is in update mode, run the install again to finish"}
+        print("\ninterrupted" + why["restore" if a.restore is not None else "backup" if a.backup is not None else "install"],
+              file=sys.stderr)
         return 130
 
 

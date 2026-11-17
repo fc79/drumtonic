@@ -1,0 +1,13 @@
+# Drumtonic on the FM-1: after tests/flash/drumtonic_fm1_kits16b.txt (same HOST_FLASH): kit 12, erased there, is
+# still empty after a restart (white 12 says EMPTY KIT, kit 12 keeps playing); white 16 loads kit 16
+50 expect 32775 kitused
+50 expect 11 kitcur
+100 btn 8
+150 btn 4
+200 keys 0x80000
+250 keys 0
+260 expect 11 kitcur
+300 keys 0x4000000
+350 keys 0
+360 expect 15 kitcur
+400 end

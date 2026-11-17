@@ -44,6 +44,7 @@
 19600 btn 2
 20800 shot
 20900 btn 2
+20950 btn 2
 22100 shot
 22200 btn 2
 23400 shot

@@ -340,8 +340,10 @@ static void voice_block(uint32_t ch, int32_t *out, int32_t (*sb)[DRUM_BLK])
     }
     pitch += v->semi_q16;
     pitch = pitch > 6 * 65536 ? 6 * 65536 : pitch < -10 * 65536 ? -10 * 65536 : pitch;
-    inc = (uint32_t)(((uint64_t)c->inc * drum_exp2(pitch)) >> 16);
-    if (inc > 0x7FFFFFFFu) inc = 0x7FFFFFFFu;
+    {   /* (at the top: half the rate, clamped before it is cut to 32 bits, or a sweep from up there wrapped) */
+        uint64_t w = ((uint64_t)c->inc * drum_exp2(pitch)) >> 16;
+        inc = w > 0x7FFFFFFFu ? 0x7FFFFFFFu : (uint32_t)w;
+    }
 
     eo = (int32_t)(o0 >> 15);                   /* Q15, then a straight line to the block's end */
     en = (int32_t)(n0 >> 15);

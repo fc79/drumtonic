@@ -5,8 +5,9 @@
  *
  * The algorithms are after 9W9's send reverb, delay and master (GPL-3.0), written again here without
  * their helper libraries:
- *   reverb   four combs at 12 bits (the early-rack grain) with damping in the loop, two allpasses a side (the right
- *            reads the combs with alternate signs); a low cut on the send
+ *   reverb   five types (fx_rv.c): CLASSIC (four combs at 12 bits, the early-rack grain, with damping in the loop, two
+ *            allpasses a side; the right reads the combs with alternate signs), PLATE, HALL, ROOM, GATED; a low cut and
+ *            PRE DLY on the send, WIDTH after
  *   delay    a note value of the tempo, slewed (a change warps instead of clicking), feedback through a darkening
  *            one-pole, 12-bit line; TAPE above 0 adds wow and flutter, saturation in the loop and a darker loop, more
  *            as it turns; PING: the left at the time, the right at twice it
@@ -25,6 +26,9 @@
 #define FX_SR 44100.0f
 #define FX_DLEN 65536u                          /* the delay line: 1.49 s */
 static int16_t fx_dline[FX_DLEN] POOL;
+#define FX_D2R 512u                             /* TO REV's ring: the delay's echo, 14 bits (8192 is 1.0), read by the
+                                                 * reverb 256 frames later (fx_render) */
+static int16_t fx_d2r[FX_D2R];
 #define FX_LA 64                                /* the limiter's look-ahead: 1.45 ms */
 #define FX_CEIL 0.98f                           /* its ceiling (-0.18 dBFS) */
 static volatile float fx_gr;                   /* ISR -> main: the most gain reduction since the screen looked, dB (<= 0) */
@@ -37,16 +41,15 @@ static const float FX_C_HP[4] = {0.0f, 0.008512f, 0.01274f, 0.021144f};   /* the
 static const float FX_RATIO[10] = {1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, 8.0f, 12.0f, 20.0f, 100.0f};
 
 static struct {                                 /* what the knobs mean (main: fx_apply) */
-    float rv_fb, rv_damp, rv_lvl, rv_hpa, dl_ms, dl_fb, dl_tc, dl_lvl, dl_hpa, wear;
+    float rv_fb, rv_damp, rv_lvl, rv_hpa, dl_ms, dl_fb, dl_tc, dl_lvl, dl_hpa, dl_rv, wear;
     int32_t tape, ping;
     float drive, c_thr, c_slope, c_atk, c_rel, c_mix, c_fall, c_mkt, c_hpa;
     int32_t c_on, f_mode;                       /* filter: 0 off, 1 LP, 2 HP */
     float f_g, f_k;
 } fx_p;
 static struct {                                 /* (ISR) */
-    int16_t comb[1116 + 1188 + 1277 + 1356];
-    float ap[556 + 441], apr[579 + 457], cdmp[4];
-    int32_t cpos[4], apos[2], aposr[2], rv_quiet;
+    float cdmp[4];                              /* CLASSIC's dampings (its lines: fx_rv.c rv) */
+    int32_t rv_quiet;
     float rv_hx, rv_hy;                         /* the sends' low cuts */
     int32_t w, dl_quiet;
     float dcur, lp, tape_hp, dl_hx, dl_hy;
@@ -102,6 +105,7 @@ static float fx_sqrtf(float x)                  /* x > 0: from the exponent, the
     y = 0.5f * (y + x / y); y = 0.5f * (y + x / y); y = 0.5f * (y + x / y);
     return y;
 }
+static float fx_psin(uint32_t ph) { float x = (float)(int32_t)ph * (1.0f / 2147483648.0f); return 4.0f * x * (1.0f - fx_absf(x)); }
 static float fx_db2lin(float db) { return fx_exp2(db * 0.16609640f); }
 static float fx_pot(uint32_t v) { return (float)v * (1.0f / 127.0f); }
 static float fx_hpa(uint32_t v)                 /* a one-pole high-pass's coefficient: 20 .. 1000 Hz */
@@ -109,6 +113,8 @@ static float fx_hpa(uint32_t v)                 /* a one-pole high-pass's coeffi
     float fc = 20.0f * fx_exp2(fx_pot(v) * 5.644f), rc = 1.0f / (6.2831853f * fc);
     return rc / (rc + 1.0f / FX_SR);
 }
+
+#include "fx_rv.c"
 
 /* ---- the main loop's side */
 static void fx_apply_x(const uint8_t *kx)       /* from a kit's kitx (the ISR: a pattern's next kit, app_fm1.c) */
@@ -120,6 +126,7 @@ static void fx_apply_x(const uint8_t *kx)       /* from a kit's kitx (the ISR: a
     fx_p.rv_damp = 0.75f - fx_pot(x[FX_RV_TONE]) * 0.55f;
     fx_p.rv_lvl = 1.0f;                         /* (no RETURN knob: unity gain; the sends set how much) */
     fx_p.rv_hpa = fx_hpa(x[FX_RV_HPF]);
+    rv_params(x);
     ms = FX_BEATS[x[FX_DL_TIME] % 13u] * 60000.0f / (float)(set.bpm ? set.bpm : 120u);
     while (ms > (float)(FX_DLEN - 256u) / FX_SR * 1000.0f) ms *= 0.5f;   /* longer than the line: half of it */
     fx_p.dl_ms = ms;
@@ -130,6 +137,7 @@ static void fx_apply_x(const uint8_t *kx)       /* from a kit's kitx (the ISR: a
     fx_p.dl_lvl = 1.0f;                         /* (no RETURN knob: unity gain; the sends set how much) */
     fx_p.dl_hpa = fx_hpa(x[FX_DL_HPF]);
     fx_p.ping = x[FX_DL_PING] != 0u;
+    fx_p.dl_rv = (float)fx_get(x, FX_DL_REV) / 100.0f;   /* TO REV: the delay into the reverb */
     fx_p.drive = x[FX_M_DRIVE] ? 1.0f + 15.0f * fx_pot(x[FX_M_DRIVE]) : 0.0f;
     fx_p.c_on = x[FX_M_RATIO] > 0u;
     fx_p.c_thr = -48.0f + 48.0f * fx_pot(x[FX_M_THRESH]);
@@ -169,6 +177,7 @@ static void fx_init(void)
     memset(&fx, 0, sizeof fx);
     fx.c_mk = 1.0f;
     memset(fx_dline, 0, sizeof fx_dline);
+    memset(fx_d2r, 0, sizeof fx_d2r);
     fx.rv_quiet = FX_RV_QUIET;
     fx.dl_quiet = (int32_t)FX_DLEN;
     for (i = 0; i < FX_LA; i++) fx.lq[i] = fx.lb[i] = 1.0f;
@@ -176,57 +185,17 @@ static void fx_init(void)
     fx.lgr = 1.0f;
     fx_apply();
     fx.dcur = fx_p.dl_ms * 0.001f * FX_SR;
+    rv_ready = 0;                               /* (main and the ISR never run at once: core 1 works inside the ISR) */
+    memset(&rv, 0, sizeof rv);
+    memset(rv_pre, 0, sizeof rv_pre);
+    rv_start(rv_p.type);
+    rv.fade = 1.0f;
+    rv.sz = rv_p.size;
+    rv.pcur = rv_p.pre;
+    rv_ready = 1;
 }
 
 /* ---- the ISR's side */
-static void fx_reverb(const int32_t *bus, float *l, float *r, uint32_t n)
-{
-    int16_t *cb[4];
-    float *a0 = fx.ap, *a1 = fx.ap + FX_AL[0], *b0 = fx.apr, *b1 = fx.apr + FX_ALR[0];
-    const float damp = fx_p.rv_damp, fb = fx_p.rv_fb, lvl = fx_p.rv_lvl, hpa = fx_p.rv_hpa;
-    uint32_t i, any = 0;
-    int32_t quiet = fx.rv_quiet;
-    if (quiet >= FX_RV_QUIET) {
-        for (i = 0; i < n; i++) any |= (uint32_t)bus[i];
-        if (!any) return;
-    }
-    cb[0] = fx.comb; cb[1] = cb[0] + FX_CL[0]; cb[2] = cb[1] + FX_CL[1]; cb[3] = cb[2] + FX_CL[2];
-    for (i = 0; i < n; i++) {
-        float in = (float)bus[i] * (1.0f / 32768.0f), x, acc = 0.0f, accr = 0.0f, y, yr, bo;
-        int32_t c, wr = 0, p;
-        fx.rv_hy = hpa * (fx.rv_hy + in - fx.rv_hx);
-        fx.rv_hx = in;
-        x = fx.rv_hy;
-        for (c = 0; c < 4; c++) {
-            int16_t *b = cb[c];
-            int32_t k;
-            float o;
-            p = fx.cpos[c];
-            o = (float)b[p] * (1.0f / 2048.0f);
-            acc += o;
-            accr += (c & 1) ? -o : o;
-            fx.cdmp[c] = o + (fx.cdmp[c] - o) * damp;
-            k = (int32_t)((x + fx.cdmp[c] * fb) * 2048.0f);   /* the loop at 12 bits, toward zero */
-            k = k > 32767 ? 32767 : k < -32767 ? -32767 : k;
-            b[p] = (int16_t)k;
-            wr |= k;
-            fx.cpos[c] = p + 1 >= FX_CL[c] ? 0 : p + 1;
-        }
-        y = acc * 0.25f;
-        p = fx.apos[0]; bo = a0[p]; a0[p] = y + bo * 0.5f; y = bo - y * 0.5f; fx.apos[0] = p + 1 >= FX_AL[0] ? 0 : p + 1;
-        p = fx.apos[1]; bo = a1[p]; a1[p] = y + bo * 0.5f; y = bo - y * 0.5f; fx.apos[1] = p + 1 >= FX_AL[1] ? 0 : p + 1;
-        yr = accr * 0.25f;
-        p = fx.aposr[0]; bo = b0[p]; b0[p] = yr + bo * 0.5f; yr = bo - yr * 0.5f; fx.aposr[0] = p + 1 >= FX_ALR[0] ? 0 : p + 1;
-        p = fx.aposr[1]; bo = b1[p]; b1[p] = yr + bo * 0.5f; yr = bo - yr * 0.5f; fx.aposr[1] = p + 1 >= FX_ALR[1] ? 0 : p + 1;
-        l[i] += y * lvl;
-        r[i] += yr * lvl;
-        quiet = (wr == 0 && bus[i] == 0) ? quiet + 1 : 0;
-    }
-    fx.rv_quiet = quiet;
-    for (i = 0; i < 4u; i++) if (fx_absf(fx.cdmp[i]) < 1e-20f) fx.cdmp[i] = 0.0f;
-    if (fx_absf(fx.rv_hy) < 1e-20f) fx.rv_hy = 0.0f;
-}
-
 static float fx_tap(int32_t w, float d)         /* the line d samples behind w, interpolated */
 {
     float rp = (float)w - d, fr;
@@ -238,8 +207,8 @@ static float fx_tap(int32_t w, float d)         /* the line d samples behind w, 
     i1 = (i0 + 1) & (int32_t)(FX_DLEN - 1u);
     return ((float)fx_dline[i0] + ((float)fx_dline[i1] - (float)fx_dline[i0]) * fr) * (1.0f / 2048.0f);
 }
-static float fx_psin(uint32_t ph) { float x = (float)(int32_t)ph * (1.0f / 2147483648.0f); return 4.0f * x * (1.0f - fx_absf(x)); }
-static void fx_delay(const int32_t *bus, float *l, float *r, uint32_t n)
+static void fx_delay(const int32_t *bus, float *l, float *r, int16_t *wet, uint32_t at, uint32_t n)   /* wet: its echo, mono, into
+                                                 * fx_d2r from at (TO REV) */
 {
     const float target = fx_p.dl_ms * 0.001f * FX_SR, fb = fx_p.dl_fb, tc = fx_p.dl_tc, lvl = fx_p.dl_lvl, hpa = fx_p.dl_hpa;
     const float wear = fx_p.wear, depth = 0.1f + 1.9f * wear, wow_a = 66.15f * depth, flut_a = 6.615f * depth;
@@ -251,6 +220,7 @@ static void fx_delay(const int32_t *bus, float *l, float *r, uint32_t n)
     if (quiet >= (int32_t)FX_DLEN) {
         for (i = 0; i < n; i++) any |= (uint32_t)bus[i];
         if (!any) {                             /* a silent line: time moves on, nothing to read */
+            for (i = 0; i < n; i++) wet[(at + i) & (FX_D2R - 1u)] = 0;
             fx.w = (int32_t)(((uint32_t)w + n) & (FX_DLEN - 1u));
             fx.dcur = target;
             return;
@@ -278,15 +248,31 @@ static void fx_delay(const int32_t *bus, float *l, float *r, uint32_t n)
         w = (w + 1) & (int32_t)(FX_DLEN - 1u);
         l[i] += y * lvl;
         r[i] += y2 * lvl;
+        { float e = (y + y2) * (0.5f * 8192.0f) * lvl; wet[(at + i) & (FX_D2R - 1u)] = (int16_t)(e > 32767.0f ? 32767.0f : e < -32767.0f ? -32767.0f : e); }
         quiet = (k == 0 && bus[i] == 0) ? quiet + 1 : 0;
     }
     fx.w = w; fx.dcur = dcur; fx.lp = lp; fx.tape_hp = hp; fx.dl_quiet = quiet;
     if (fx_absf(fx.dl_hy) < 1e-20f) fx.dl_hy = 0.0f;
 }
 
+/* the limiter's least (fx_render): place k of lq into q (qn long from qh), after dropping those not under its gain */
+static inline void fx_lq_push(uint8_t *q, uint32_t qh, int32_t *qn, uint32_t k)
+{
+    const float v = fx.lq[k];
+    int32_t n = *qn;
+    while (n && fx.lq[q[(qh + (uint32_t)n - 1u) % FX_LA]] >= v) n--;
+    q[(qh + (uint32_t)n) % FX_LA] = (uint8_t)k;
+    *qn = n + 1;
+}
+
 static float fx_l[256], fx_r[256];
+/* TO REV: the delay's echo into the reverb, a fixed 256 frames (5.8 ms) later: the reverb runs beside the delay on the
+ * second core, so it takes what the delay gave before (the user's choice, 2026-11-16: a block later, not one core) */
+static uint32_t fx_d2r_w;
+static int32_t fx_rvin[256];
+static const int32_t *fx_rvbus;                 /* the reverb's input this block: the sends, with the delay if TO REV */
 #ifdef DRUM_CPU2
-static void fx_c1_job(uint32_t n) { fx_reverb(drum_bus[0], fx_l, fx_r, n); }   /* (the second core) */
+static void fx_c1_job(uint32_t n) { fx_reverb(fx_rvbus, fx_l, fx_r, n); }   /* (the second core) */
 #endif
 
 static void fx_render(int32_t *out, uint32_t n)
@@ -295,22 +281,32 @@ static void fx_render(int32_t *out, uint32_t n)
     uint32_t i;
     if (n > 256u) n = 256u;
     for (i = 0; i < n; i++) { l[i] = (float)out[2u * i] * (1.0f / 32768.0f); r[i] = (float)out[2u * i + 1u] * (1.0f / 32768.0f); }
+    fx_rvbus = drum_bus[0];
+    if (fx_p.dl_rv > 0.0f) {                    /* (0 %: the sends alone, the reverb as before bit for bit) */
+        const float a = fx_p.dl_rv * 4.0f;   /* (8192 -> the bus's 32768) */
+        for (i = 0; i < n; i++) {
+            float v = (float)drum_bus[0][i] + (float)fx_d2r[(fx_d2r_w + FX_D2R - 256u + i) & (FX_D2R - 1u)] * a;
+            fx_rvin[i] = v > 2.0e9f ? 2000000000 : v < -2.0e9f ? -2000000000 : (int32_t)v;
+        }
+        fx_rvbus = fx_rvin;
+    }
 #ifdef DRUM_CPU2
     if (cpu2_run(fx_c1_job, n)) {               /* the reverb there, the delay here into its own lines, added after:
                                                  * each adds one term a sample, so the sum is the same bit for bit */
         static float dl[256], dr[256];
         for (i = 0; i < n; i++) dl[i] = dr[i] = 0.0f;
-        fx_delay(drum_bus[1], dl, dr, n);
-        if (cpu2_wait() != 0) fx_reverb(drum_bus[0], l, r, n);   /* (it failed: here) */
+        fx_delay(drum_bus[1], dl, dr, fx_d2r, fx_d2r_w, n);
+        if (cpu2_wait() != 0) fx_reverb(fx_rvbus, l, r, n);   /* (it failed: here) */
         for (i = 0; i < n; i++) { l[i] += dl[i]; r[i] += dr[i]; }
     } else {
-        fx_reverb(drum_bus[0], l, r, n);
-        fx_delay(drum_bus[1], l, r, n);
+        fx_reverb(fx_rvbus, l, r, n);
+        fx_delay(drum_bus[1], l, r, fx_d2r, fx_d2r_w, n);
     }
 #else
-    fx_reverb(drum_bus[0], l, r, n);
-    fx_delay(drum_bus[1], l, r, n);
+    fx_reverb(fx_rvbus, l, r, n);
+    fx_delay(drum_bus[1], l, r, fx_d2r, fx_d2r_w, n);
 #endif
+    fx_d2r_w = (fx_d2r_w + n) & (FX_D2R - 1u);
     if (fx_p.drive > 0.0f)
         for (i = 0; i < n; i++) { l[i] = fx_tanh(l[i] * fx_p.drive) * 0.7f; r[i] = fx_tanh(r[i] * fx_p.drive) * 0.7f; }
     if (fx_p.c_on) {                            /* the compressor: a peak detector (high-passed if SC HPF is on), its fall at most
@@ -361,26 +357,41 @@ static void fx_render(int32_t *out, uint32_t n)
             fx.s4[c] = fx_absf(s4) < 1e-20f ? 0.0f : s4;
         }
     }
-    for (i = 0; i < n; i++) {                   /* the limiter: the gain each sample wants (ceiling / peak), the
-                                                 * least over the look-ahead, a release, then a box of FX_LA so the
-                                                 * gain ramps down and reaches it as that sample leaves the delay */
-        float a = fx_absf(l[i]) > fx_absf(r[i]) ? fx_absf(l[i]) : fx_absf(r[i]), want = a > FX_CEIL ? FX_CEIL / a : 1.0f;
-        float least = want, lv, rv, g;
-        int32_t j, li = fx.li;
-        fx.lq[li] = want;
-        if (want < 1.0f) fx.lhold = 0;
-        else if (fx.lhold < FX_LA) fx.lhold++;
-        if (fx.lhold < FX_LA)                   /* (a gain under 1 in the window: its least) */
-            for (j = 0; j < FX_LA; j++) if (fx.lq[j] < least) least = fx.lq[j];
-        fx.lgr = least < fx.lgr ? least : fx.lgr + (least - fx.lgr) * 1.9e-4f;   /* (release ~120 ms) */
-        fx.lsum += fx.lgr - fx.lb[li];
-        fx.lb[li] = fx.lgr;
-        g = fx.lsum * (1.0f / (float)FX_LA);
-        lv = fx.la[0][li] * g; rv = fx.la[1][li] * g;   /* (the sample of FX_LA ago) */
-        fx.la[0][li] = l[i]; fx.la[1][li] = r[i];
-        fx.li = li + 1 == FX_LA ? 0 : li + 1;
-        lv *= 32768.0f; rv *= 32768.0f;
-        out[2u * i] = (int32_t)(lv > 32767.0f ? 32767.0f : lv < -32767.0f ? -32767.0f : lv);
-        out[2u * i + 1u] = (int32_t)(rv > 32767.0f ? 32767.0f : rv < -32767.0f ? -32767.0f : rv);
+    {   /* the limiter: the gain each sample wants (ceiling / peak), the least over the look-ahead, a release, then a
+         * box of FX_LA so the gain ramps down and reaches it as that sample leaves the delay. The least: q, the
+         * window's places from the oldest, each one's gain under all the newer ones' (fx_lq_push), so the first is the
+         * least; built again from lq when a gain under 1 comes back into the window, then a push a sample (until
+         * 2026-11-17 all FX_LA looked through at each sample, 64 compares). Its state in locals, written back after */
+        uint32_t li = (uint32_t)fx.li, j, qh = 0;
+        int32_t lhold = fx.lhold, qn = -1;      /* (qn: q's length, -1 not built) */
+        uint8_t q[FX_LA];
+        float lgr = fx.lgr, lsum = fx.lsum;
+        for (i = 0; i < n; i++) {
+            float a = fx_absf(l[i]) > fx_absf(r[i]) ? fx_absf(l[i]) : fx_absf(r[i]), want = a > FX_CEIL ? FX_CEIL / a : 1.0f;
+            float least = want, lv, rv, g;
+            if (want < 1.0f) lhold = 0;
+            else if (lhold < FX_LA) lhold++;
+            if (lhold >= FX_LA) {               /* (no gain under 1 in the window: 1) */
+                qn = -1;
+                fx.lq[li] = want;
+            } else {
+                if (qn < 0) { qn = 0; qh = 0; for (j = 1; j < FX_LA; j++) fx_lq_push(q, qh, &qn, (li + j) % FX_LA); }
+                else if (qn && q[qh] == li) { qh = (qh + 1u) % FX_LA; qn--; }   /* (the oldest leaves) */
+                fx.lq[li] = want;
+                fx_lq_push(q, qh, &qn, li);
+                least = fx.lq[q[qh]];
+            }
+            lgr = least < lgr ? least : lgr + (least - lgr) * 1.9e-4f;   /* (release ~120 ms) */
+            lsum += lgr - fx.lb[li];
+            fx.lb[li] = lgr;
+            g = lsum * (1.0f / (float)FX_LA);
+            lv = fx.la[0][li] * g; rv = fx.la[1][li] * g;   /* (the sample of FX_LA ago) */
+            fx.la[0][li] = l[i]; fx.la[1][li] = r[i];
+            li = li + 1u == FX_LA ? 0u : li + 1u;
+            lv *= 32768.0f; rv *= 32768.0f;
+            out[2u * i] = (int32_t)(lv > 32767.0f ? 32767.0f : lv < -32767.0f ? -32767.0f : lv);
+            out[2u * i + 1u] = (int32_t)(rv > 32767.0f ? 32767.0f : rv < -32767.0f ? -32767.0f : rv);
+        }
+        fx.li = (int32_t)li; fx.lhold = lhold; fx.lgr = lgr; fx.lsum = lsum;
     }
 }

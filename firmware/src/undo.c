@@ -76,8 +76,8 @@ static void undo_put(uint32_t i)                /* copy i becomes the state: as 
         snd_t s;
         s.k = d->kit; memcpy(s.x, d->x, SND_NX);
         kw[d->kc] = s;
-        if (memcmp(&s, &kits[d->kc], sizeof s)) kw_on |= (uint8_t)(1u << d->kc);
-        else kw_on &= (uint8_t)~(1u << d->kc);
+        if (memcmp(&s, &kits[d->kc], sizeof s)) kw_on |= (uint16_t)(1u << d->kc);
+        else kw_on &= (uint16_t)~(1u << d->kc);
     }
     orig.on = 0;                                /* (PRESETS' original: of a part that may be gone) */
     kit_edited = 1;

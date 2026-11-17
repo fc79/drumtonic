@@ -17,6 +17,7 @@ shot 7300 sound
 shot 16400 library
 shot 19500 mix
 shot 18200 lfo
+shot 20800 reverb
 shot 22100 delay
 shot 24700 master
 shot 26000 comp

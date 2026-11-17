@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* What a pattern holds besides its steps, on the FM-1:
  *
- *   lanes   160 for all the patterns. A lane is one value per step for one parameter of one channel in one pattern:
+ *   lanes   176 for all the patterns (160 until 2026-11-17). A lane is one value per step for one parameter of one channel in one pattern:
  *           a knob's recorded motion, its p-locks, (P_COND) the steps' conditions, (P_MICRO) their micro timing or
  *           (P_RATCH) their ratchets.
  *           MOT_NONE: the knob's own value (no condition: always; no micro timing: on the step).
@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include "drum.h"
 
-#define NLANE 160u
+#define NLANE 176u
 #define NLFO 8u
 #define MOT_NONE 0xFFu
 #define MOT_GAP 4u                              /* recording: a pause up to this many steps is filled in */

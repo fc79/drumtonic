@@ -1,5 +1,5 @@
 # Drumtonic on the FM-1: the 4 knobs' acceleration (2026-11-12): one click, one step when turned slowly; spun, up
-# to x8 (a quick turn crosses 0..127 in about one turn), the speed from the clicks over the time since the last ones
+# to x6 (x8 until 2026-11-17; a quick turn crosses 0..127 in about a turn and a half), the speed from the clicks over the time since the last ones
 # (a long main loop no longer hides it). TEMPO always a BPM a click. EDIT's OSC: knob 2 FREQ (BD: param 0 1); HOME:
 # knob 1 TEMPO (enc 2), knob 4 FILTER. buttons: 6 EDIT 8 HOME
 50 btn 8
@@ -29,6 +29,8 @@
 2780 enc 3 1
 2800 enc 3 1
 2820 enc 3 1
+# 12 clicks at 50 a second: 10 -> 75 (x6 at most; x8 went to 94)
+2830 expect 75 param 0 1
 2840 enc 3 1
 2860 enc 3 1
 2880 enc 3 1
@@ -41,7 +43,7 @@
 3020 enc 3 1
 3040 enc 3 1
 3060 enc 3 1
-# 24 clicks up at 50 a second: about one turn crosses the range (10 -> 127)
+# 24 clicks up at 50 a second: the range crossed (10 -> 127)
 3080 expect 127 param 0 1
 3380 enc 3 -2
 3440 enc 3 -2

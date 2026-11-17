@@ -17,13 +17,13 @@
 610 expect 6 view
 620 expect 0 bank
 700 btn 0
-710 expect 4 bank
+710 expect 5 bank
 800 btn 1
 810 btn 1
 820 expect 1 bank
 900 btn 0
 910 btn 0
-920 expect 4 bank
+920 expect 5 bank
 1000 enc 1 -10
 1010 expect 107 fx 20
 1100 end

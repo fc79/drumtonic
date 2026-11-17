@@ -46,6 +46,12 @@
 #include "fm1_flash_map.h"
 #define SECTOR_MAX (4096u - 12u)                /* settings, a blob: the sector minus the header */
 #define SLOT_MAX (SLOT_SECT * 0x1000u - 12u)
+/* each record stored is [magic][length][crc32] then its bytes: settings and a blob STORE_MAGIC, a slot SLOT_MAGIC ^
+ * STORE_MAGIC, blobs_save's record over several blobs BLOBS_MAGIC ^ STORE_MAGIC */
+#define SLOT_MAGIC 0x544F4C53u                  /* "SLOT" */
+#define BLOBS_MAGIC 0x53424C42u                 /* "BLBS" */
+/* store_raw_read's areas (a backup over MIDI: backup.c): the settings, blob i, blobs i .. i + k - 1, slot i */
+enum { STORE_SET, STORE_BLOB, STORE_BLOBS, STORE_SLOT };
 
 #if BOARD_SMK37
 _Static_assert(SETTINGS_AT >= FL_DATA_LO && SETTINGS_AT + 0x1000u <= BLOBS_AT, "SMK store: settings outside FL_DATA");

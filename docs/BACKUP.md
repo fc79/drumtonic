@@ -19,7 +19,8 @@ This is how it was done on an FM-1 (stock FM-1_015), from a Mac, **without writi
   cd JLTOOL && patch -p1 < .../tools/backup/jl-uboot-tool-macos/jl-uboot-tool-macos.patch
   ```
 
-  It needs `sudo` (macOS has to let go of the disk). Try it first on any USB stick, read only:
+  It needs `sudo` (macOS has to let go of the disk). Under `sudo`, `python3` may be another Python than yours, without
+  pyusb (Homebrew's, for one): then name the one that has it, e.g. `sudo /usr/bin/python3 jluboottool.py ...`. Try it first on any USB stick, read only:
   `sudo python3 mac_selftest.py usb:VVVV:PPPP` (`python3 mac_selftest.py` lists the devices).
 
 ## Reading the flash

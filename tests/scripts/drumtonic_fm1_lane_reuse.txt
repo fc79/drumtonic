@@ -1,0 +1,82 @@
+# Drumtonic on the FM-1: a lane's place taken by another while it glides. BD (P1) has p-locks on PITCH on steps 1-4
+# (127 0 127 0: a glide from each to the next); SD a ratchet on step 3. Playing, SD's channel is pasted on BD's (GLO
+# held copies it on SEQ, GLO + black 1, SEL: yes): BD's PITCH lane is freed and its place taken by the ratchet's at
+# once, between two steps. The glide of the lane that was there must stop: until 2026-11-17 it went on into the new one,
+# its ratchet's row of what plays now (past BD's 26 into SD's: SD's MOD mode set by BD's glide, until STOP).
+# 120 BPM: PLAY at 1000, the second bar's steps 1-3 at 3000-3375 (BD gliding). Black 1 0x2 (BD), black 2 0x8 (SD).
+# (a first press only closes the opening)
+50 btn 8
+100 btn 6
+200 keys 0x1
+250 enc 3 120
+300 keys 0
+350 keys 0x4
+400 enc 3 -120
+450 keys 0
+500 keys 0x10
+550 enc 3 120
+600 keys 0
+650 keys 0x40
+700 enc 3 -120
+750 keys 0
+760 expect 127 lane 0 0 1 0
+770 expect 0 lane 0 0 1 1
+780 expect 1 lanes
+800 btn 11
+850 keys 0x8
+900 keys 0
+910 expect 1 ch
+950 keys 0x10
+960 btn 10
+970 keys 0
+980 expect 2 ratch 0 1 2
+990 expect 2 lanes
+1000 btn 12
+1500 expect -1 live 1 2
+2000 btndown 7
+2400 keys 0x2
+2450 keys 0
+2500 btnup 7
+2510 expect 2 ask
+3150 btn 3
+3160 expect 0 ask
+3170 expect 2 ratch 0 0 2
+3180 expect -1 lane 0 0 1 0
+3200 expect -1 live 1 2
+3600 expect -1 live 1 2
+3700 btn 12
+# the same on CY, the last channel: its ratchet's row would be past the end of what plays now (tests/asan.sh)
+3800 btn 6
+3850 keys 0x400000
+3900 keys 0
+3910 expect 9 ch
+4000 keys 0x1
+4050 enc 3 120
+4100 keys 0
+4150 keys 0x4
+4200 enc 3 -120
+4250 keys 0
+4300 keys 0x10
+4350 enc 3 120
+4400 keys 0
+4450 keys 0x40
+4500 enc 3 -120
+4550 keys 0
+4560 expect 127 lane 0 9 1 0
+4570 expect 3 lanes
+4600 btn 11
+4650 keys 0x8
+4700 keys 0
+4710 expect 1 ch
+5000 btn 12
+5400 btndown 7
+5800 keys 0x400000
+5850 keys 0
+5900 btnup 7
+5910 expect 2 ask
+7150 btn 3
+7160 expect 0 ask
+7170 expect 2 ratch 0 9 2
+7180 expect -1 lane 0 9 1 0
+7600 btn 12
+7700 end

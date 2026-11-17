@@ -1,7 +1,7 @@
 # Drumtonic: the manual
 
 Drumtonic turns the M-Vave FM-1 into a drum machine with 10 synthesized channels (BD SD CP CH OH LT MT HT RS CY),
-32 patterns of up to 64 steps, 8 kits, a reverb, a delay and a master. The sound engine is described in
+32 patterns of up to 64 steps, 16 kits, a reverb with five types, a delay and a master. The sound engine is described in
 [DRUMS.md](DRUMS.md).
 
 ## The screen
@@ -22,12 +22,15 @@ Turning a knob shows its name and value large over the page for a second. A gest
 ends in a large two-word message (`PASTE` / `P5`, `SAVED` / `KIT 3`). When something cannot be done, its first
 word is grey (`NOTHING` / `TO PASTE`).
 
+Before something is lost, a question fills the page (`CLEAR THE PATTERN?`, `ERASE KIT 5?`, `REPLACE KIT?`): HOME
+answers NO and SEL answers YES, shown in large letters in the order the two buttons sit on the panel.
+
 ## How it works
 
 1. **A button, a page.** A button opens its page; pressed again, it opens the page's next bank. The open page's
    button is lit, and the others that open something glow.
-2. **The knobs accelerate.** Turned slowly they move one step a click. Turned faster they move 2, 4 and up to 8
-   steps a click, so a quick turn crosses 0-127 in about one turn. TEMPO, SWING, RATE, MICRO, switches and short
+2. **The knobs accelerate.** Turned slowly they move one step a click. Turned faster they move 2, 4 and up to 6
+   steps a click, so a quick turn crosses 0-127 in about a turn and a half. TEMPO, SWING, RATE, MICRO, switches and short
    ranges always move one step.
 3. **The black keys 1-10 are the channels.** On LIVE they mute; on every other page they pick the channel. They
    light the same way everywhere: bright when the channel plays, dim when silent, dark when muted. The chosen
@@ -134,8 +137,11 @@ name and sends.
 Every channel's level and meter. The black keys pick the channel, and the knobs are its LEVEL, REV and DLY (the
 sends) and PAN.
 
-White keys 1-8 are the **kits**. A tap loads one, and a tap on the kit already playing takes it back to its saved
-version. GLO + a white key saves the kit there.
+The 16 white keys are the **kits** 1-16, and the row of 16 squares under the meters shows them in the same order:
+white the kit playing, light grey a saved kit, dark an empty place. A tap loads a kit, and a tap on the kit already
+playing takes it back to its saved version; an empty one says `EMPTY KIT`. GLO + a white key saves the kit there
+(over another saved kit it asks first). GLO + REC asks `ERASE KIT 5?` and empties the place of the kit playing: the
+sound goes on until another kit is loaded, and a pattern that had that kit keeps its sound.
 
 **Each pattern has its kit.** A pattern takes the kit playing when it gets its first step, a kit loaded here
 becomes the playing pattern's kit, and a pasted pattern brings its own. A pattern that starts with another kit
@@ -150,9 +156,10 @@ The pattern's 8 LFOs. To put one on a knob, hold LFO and turn that knob. SELECT 
 (1/32 to 16 bars when synced, 0.05 to 20 Hz when free), SHAPE (triangle, saw, square, sample & hold), DEPTH
 (-100 to +100 %) and SYNC.
 
-### FX: REVERB, DELAY, DELAY 2, MASTER, COMP
+### FX: REVERB, REVERB 2, DELAY, DELAY 2, MASTER, COMP
 
 <p align="center">
+<img src="screens/reverb.png" width="240" alt="REVERB: CLASSIC on ALGORITHM">
 <img src="screens/delay.png" width="240" alt="DELAY">
 <img src="screens/master.png" width="240" alt="MASTER">
 <img src="screens/comp.png" width="240" alt="COMP">
@@ -160,10 +167,25 @@ The pattern's 8 LFOs. To put one on a knob, hold LFO and turn that knob. SELECT 
 
 FX again or OCT+ opens the next bank, OCT- the one before. The sends are on MIX and on SOUND's CHANNEL bank.
 
-- **REVERB**: decay, tone, low cut. It returns at unity gain; each channel's REV send sets how much it gets.
+- **REVERB**: DECAY, PRE DLY (0-100 ms before the reverb starts), SIZE (10-100 %, the space glides as you turn it)
+  and TONE. ALGORITHM picks the type, shown large in the middle of REVERB and REVERB 2:
+  - **CLASSIC**: the reverb of the earlier versions.
+  - **PLATE**: bright and dense.
+  - **HALL**: a large space with a long tail.
+  - **ROOM**: a small, close space.
+  - **GATED**: a dense burst cut short; DECAY sets how long it lasts.
+
+  A new type fades the old tail out and starts afresh. The reverb returns at unity gain; each channel's REV send sets
+  how much it gets. A kit saved with an earlier version plays CLASSIC, as it did.
+- **REVERB 2**: HP IN, MOD and WIDTH. HP IN is a high-pass on what goes into the reverb, shown as its cutoff (20 Hz
+  to 1 kHz), so the low end stays dry. MOD moves the tail slowly, as a real space does; WIDTH goes from mono (0 %)
+  to full stereo (100 %).
 - **DELAY**: time as a note value, feedback, tone and TAPE (0 is a clean digital delay; turned up, it adds wow,
   flutter and saturation).
-- **DELAY 2**: low cut and ping-pong. Like the reverb, the delay returns at unity gain.
+- **DELAY 2**: HP IN, a high-pass on what goes into the delay shown as its cutoff in Hz, ping-pong, and TO REV:
+  how much of the delay's echo goes on into the reverb (0 % none, 100 % all of it), so the echoes fade into the
+  space. It is saved with the kit; a kit saved with an earlier version starts at 0 %. Like the
+  reverb, the delay returns at unity gain.
 - **MASTER**: DRIVE; FILTER, a 24 dB/octave low-pass below the middle and high-pass above it (shown L1-L64,
   OFF, H1-H63); RESO, from none to a peak of +17 dB.
 - **COMP**: THRESH, RATIO (1:1 is off), ATTACK and RELEASE in ms, with a soft knee and automatic make-up. PRESETS
@@ -179,13 +201,13 @@ that is always on. It does nothing under -0.2 dBFS and stops every peak at the c
 | --- | --- |
 | PLAY | play and stop |
 | REC | record: hits on white keys 1-10 (except on HOME) and knob moves |
-| SAVE | saves everything: the sound, the 8 kits and the 32 patterns, with QUANT written into the steps. It works while playing too; the sound goes on |
-| SEL | held: FILL. In a question: yes. In a list: run the row |
+| SAVE | saves everything: the sound, the 16 kits and the 32 patterns, with QUANT written into the steps. It works while playing too; the sound goes on |
+| SEL | held: FILL. In a question: yes (HOME: no). In a list: run the row |
 | ARP | HOME: beat repeat. SEQ: note repeat. A step held: its ratchet |
 | MASTER | the volume |
 | GLO held | copy what the page shows: the step held, the channel's part on STEPS, its sound on SOUND, the LFO on LFO, otherwise the pattern |
 | GLO + a key | paste there |
-| GLO + REC | clear |
+| GLO + REC | clear; on MIX, erase the kit playing |
 | GLO + a knob | remove that knob's motion and LFO |
 | HOME + a white key | pick a pattern from any page |
 | HOME + a black key | solo the channel |
@@ -219,21 +241,56 @@ identity until a key or a button is pressed (that press only closes it).
 
 ## The processor
 
-Drumtonic runs both of the chip's cores at 320 MHz. In each block of 16 frames, half of the sounding channels and
-the reverb are rendered on the second core. The result is the same, bit for bit, as on one core. If the second
-core ever fails to answer, the FM-1 goes on with one. SETTINGS > CPU shows the load and what runs.
+Drumtonic runs both of the chip's cores at 320 MHz, always. In each block of 16 frames, half of the sounding
+channels and the reverb are rendered on the second core. The result is the same, bit for bit, as on one core. If
+the second core ever fails to answer, the screen says why and the FM-1 restarts. SETTINGS > CPU shows the load and
+what runs.
 
 ## What is kept
 
-SAVE writes the sound, its sends and effects, the 8 kits and the 32 patterns with their lanes and LFOs. The
-settings (kit, tempo, pattern, channel, clock) are saved with SAVE too, and nothing is written by itself. Your
-library sounds are written as soon as you save or delete one.
+SAVE writes the sound, its sends and effects, the 16 kits and the 32 patterns with their lanes and LFOs. The
+settings (kit, tempo, pattern, channel, clock) are saved with SAVE too, and nothing else is written by itself. A
+kit is written as soon as you save it on MIX or erase it, and so is a library sound when you save or delete one;
+the sound goes on while they are written.
 
-These are the places the FM-1 firmwares share: the settings at 0xFC000, the kits and patterns at 0xF4000-0xF9FFF,
-the library at 0x97000 and 0x9B000. **A save replaces what another FM-1 firmware kept there**, so back up first:
+These are the places the FM-1 firmwares share: the settings at 0xFC000, kits 1-8 and the patterns at
+0xF4000-0xF9FFF, the library at 0x97000 and 0x9B000, kits 9-16 at 0x9F000. An earlier Drumtonic still finds
+kits 1-8. **A save replaces what another FM-1 firmware kept there**, so back up first:
 [BACKUP.md](BACKUP.md).
 
 Drumtonic reports itself as `FM-1_987`.
+
+## Backup and restore
+
+A backup keeps everything SAVE writes in one small file (`.dtbak`, about 17 KB): the settings, the 16 kits, the 32
+patterns with their lanes and LFOs, and the sound library. It holds what was saved, not edits made since the last
+SAVE. You can keep it on the computer, put it back later, or send it to someone else with an FM-1.
+
+**From the browser.** Open the installer page in Chrome or Edge, go to the **Backup** tab and connect the FM-1 over
+USB.
+
+- **Back up the FM-1**: press **Back up**. The saves are read in under a second, nothing on the FM-1 changes, and
+  the browser asks where to save the file. The FM-1 shows BACKUP / SENT.
+- **Restore a backup**: press **Choose backup file**, or drop the file on the page. The page shows when the backup
+  was made, with which Drumtonic, and what it holds. Press **Restore**: the FM-1 asks **REPLACE ALL SAVES?**.
+  **SEL** says yes, **HOME** says no, and after a minute without an answer it is a no (RESTORE / CANCELLED, nothing
+  changed). After yes the FM-1 shows RESTORE / WRITING, writes the saves and restarts with them. Do not unplug it
+  until it has restarted.
+
+**A restore replaces every save on the FM-1**, and what the backup has empty is empty afterwards. To keep what is
+there now, back it up first. This holds for a backup someone sends you too: it brings their kits, patterns, library
+and settings, all together, never one kit alone.
+
+**From the command line**, with the same files:
+
+```sh
+python3 tools/fm1_install.py --backup                    # drumtonic-backup-DATE-TIME.dtbak, here
+python3 tools/fm1_install.py --check-backup FILE.dtbak   # what a backup holds
+python3 tools/fm1_install.py --restore FILE.dtbak        # the FM-1 asks first, on its screen
+```
+
+A backup of your saves is not a copy of the whole memory. That one keeps everything, the firmware and the unit's
+own key too, and it is for repairs: [BACKUP.md](BACKUP.md).
 
 ## If it goes wrong
 

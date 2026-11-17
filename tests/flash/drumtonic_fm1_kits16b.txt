@@ -1,0 +1,33 @@
+# Drumtonic on the FM-1: after tests/scripts/drumtonic_fm1_kits16.txt (same HOST_FLASH; not in tests/scripts, whose
+# scripts each run alone, as web/emu/test_emu.mjs does): kits 12 and 16 are still there, and kit 16
+# is the one playing (the sound saved is that kit's). Then on MIX GLO + REC asks to erase kit 12 (playing): HOME says
+# no, SEL erases it (its key empty, written at once); asked again on an empty kit, no question.
+# drumtonic_fm1_kits16c.txt finds it still erased after a restart
+50 expect 34823 kitused
+50 expect 15 kitcur
+100 btn 8
+150 btn 4
+200 keys 0x80000
+250 keys 0
+260 expect 11 kitcur
+300 btndown 7
+350 btn 13
+400 btnup 7
+410 expect 8 ask
+420 shot
+500 btn 8
+510 expect 0 ask
+520 expect 34823 kitused
+600 btndown 7
+650 btn 13
+700 btnup 7
+710 expect 8 ask
+800 btn 3
+810 expect 0 ask
+820 expect 32775 kitused
+830 expect 11 kitcur
+900 btndown 7
+950 btn 13
+1000 btnup 7
+1010 expect 0 ask
+1100 end

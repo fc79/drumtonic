@@ -192,12 +192,33 @@ static uint32_t ota_take(void)
     return d;
 }
 
+#ifdef OTA_APP
+/* OTA_APP(m, n, out, max): a decoded message for the app; its answer's length in out (0: none). An app defines it with
+ * OTA_APP_MAX, its longest answer: sent from here, packed */
+static uint8_t ota_wbig[2u + (OTA_APP_MAX * 8u + 6u) / 7u];
+static int ota_send_raw(const uint8_t *m, uint32_t n)
+{
+    uint32_t w;
+    if (n > OTA_APP_MAX) return -1;
+    ota_wbig[0] = 0xF0;
+    w = 1u + ota_pack7(m, n, ota_wbig + 1);
+    ota_wbig[w++] = 0xF7;
+    return ota_wire_send(ota_wbig, w);
+}
+#endif
+
 /* main loop, outside a session: answer handshakes */
 static void ota_service(void)
 {
     uint32_t d = ota_take();
     if (d == 7u && ota_dec[2] == 0x11)
         ota_reply_identity();
+#ifdef OTA_APP
+    else if (d) {
+        uint32_t r = OTA_APP(ota_dec, d, ota_dec, sizeof ota_dec);
+        if (r) ota_send_raw(ota_dec, r);
+    }
+#endif
 }
 
 /* one read request (3 tries x 5 s); data -> dst */

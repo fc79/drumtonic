@@ -25,19 +25,29 @@ static struct { uint8_t fmt, kit, bpm, pat, ch, ext, cpu_mode, rec_free; } set =
 static uint8_t set_saved[sizeof set];           /* the settings as in the flash: SAVE writes them only if they differ */
 
 /* ---- the sound: the kit (drumtonic.c's kit) and kitx, the sends and the effects; the 8 kits */
-#define NKIT 8u
+#define NKIT 16u                                /* the kits: 1..8 in blob 0 (as before 2026-11-16, so an older
+                                                 * Drumtonic still finds them), 9..16 in slot 2 (snd_hi_t) */
+#define NKIT1 8u
 enum { X_SEND = 0, X_FX = 2 * DRUM_NCH, SND_NX = 64 };   /* kitx: the sends (channel c: 2c reverb, 2c + 1 delay), FX_P from X_FX */
 typedef struct { drum_kit_t k; uint8_t x[SND_NX]; } snd_t;
 #define SND_FMT 0x33444E53u                     /* "SND3": 10 channels */
-typedef struct { uint32_t fmt; snd_t cur, kits[NKIT]; uint8_t used, kc, rsv[2]; } snd_blob_t;   /* 3176 B (kc: cur's kit + 1,
+typedef struct { uint32_t fmt; snd_t cur, kits[NKIT1]; uint8_t used, kc, rsv[2]; } snd_blob_t;   /* 3176 B (kc: cur's kit + 1,
                                                  * 0 not known: until 2026-11-12, the settings' kit) */
 #define SND_FMT2 0x32444E53u                    /* "SND2": 8 channels, before MT and HT (kitx: the effects from 16) */
-typedef struct { uint32_t fmt; struct { drum_kit8_t k; uint8_t x[SND_NX]; } cur, kits[NKIT]; uint8_t used, rsv[3]; } snd2_blob_t;
+typedef struct { uint32_t fmt; struct { drum_kit8_t k; uint8_t x[SND_NX]; } cur, kits[NKIT1]; uint8_t used, rsv[3]; } snd2_blob_t;
+#define SND_FMT_HI 0x32544B53u                  /* "SKT2": kits 9..16 */
+#define SND_HI_SLOT 2u                          /* (0x9F000: the library's slots 0 and 1 before it; blobs 6 and 7, 0xFA000,
+                                                 * hold M-VAVE's own data and stay untouched) */
+typedef struct { uint32_t fmt; snd_t kits[NKIT - NKIT1]; uint8_t used, rsv[3]; } snd_hi_t;   /* 2824 B: one sector */
 _Static_assert(X_FX + FX_NP <= SND_NX, "kitx: the sends and the effects do not fit");
 static uint8_t kitx[SND_NX];
 static snd_t kits[NKIT];
-static uint8_t kits_used, kit_cur, snd_kc;
+static uint16_t kits_used;                      /* (bit k: kit k + 1 holds a sound) */
+static uint8_t kit_cur, snd_kc;
 static snd_blob_t snd_io POOL;
+static snd_hi_t *snd_hi_io(void);               /* (kits 9..16's bytes: song_io's, below)*/
+static uint8_t *io_scratch(void);               /* (io_buf, below, as scratch for what never meets a save or a load:
+                                                 * snd_load's old formats, lib_load's other copy, mot_copy's lanes) */
 
 static void mot_kit_changed(uint32_t ch);
 static void mot_all_changed(void);
@@ -47,7 +57,7 @@ static void snd_x_defaults(uint8_t *x)
 {
     uint32_t i;
     memset(x, 0, SND_NX);
-    for (i = 0; i < FX_NP; i++) x[X_FX + i] = FX_P[i].def;
+    for (i = 0; i < FX_NP; i++) fx_set(x + X_FX, i, FX_P[i].def);
 }
 static void sound_apply(void) { mot_all_changed(); fx_apply(); }
 
@@ -82,46 +92,60 @@ static void x_from8(uint8_t *x)                 /* kitx: the sends of 8 channels
     memset(x, 0, SND_NX);
     for (c = 0; c < 8u; c++) { x[X_SEND + (c < 6u ? c : c + 2u) * 2u] = o[c * 2u]; x[X_SEND + (c < 6u ? c : c + 2u) * 2u + 1u] = o[c * 2u + 1u]; }
     for (c = 6; c < 8u; c++) { x[X_SEND + c * 2u] = o[10]; x[X_SEND + c * 2u + 1u] = o[11]; }   /* the toms: as LT */
-    memcpy(x + X_FX, o + 16, FX_NP);
+    memcpy(x + X_FX, o + 16, FX_NP1);
 }
 static int snd_save(void)
 {
+    snd_hi_t *hi = snd_hi_io();                 /* (song_io's bytes: SAVE writes the patterns after) */
     snd_io.fmt = SND_FMT;
     snd_io.cur.k = kit;
     memcpy(snd_io.cur.x, kitx, SND_NX);
-    memcpy(snd_io.kits, kits, sizeof kits);
-    snd_io.used = kits_used;
+    memcpy(snd_io.kits, kits, sizeof snd_io.kits);
+    snd_io.used = (uint8_t)kits_used;
     snd_io.kc = (uint8_t)(kit_cur + 1u);
-    return blob_save(0, &snd_io, sizeof snd_io);
+    memset(hi, 0, sizeof *hi);
+    hi->fmt = SND_FMT_HI;
+    memcpy(hi->kits, kits + NKIT1, sizeof hi->kits);
+    hi->used = (uint8_t)(kits_used >> NKIT1);
+    return blob_save(0, &snd_io, sizeof snd_io) || slot_save(SND_HI_SLOT, hi, sizeof *hi) ? -1 : 0;
+}
+static void snd_load_hi(void)                   /* kits 9..16, if saved: else empty */
+{
+    snd_hi_t *hi = snd_hi_io();
+    if (!slot_load(SND_HI_SLOT, hi, sizeof *hi) && hi->fmt == SND_FMT_HI) {
+        memcpy(kits + NKIT1, hi->kits, sizeof hi->kits);
+        kits_used |= (uint16_t)(hi->used << NKIT1);
+    }
 }
 static void snd_load(void)
 {
-    static snd2_blob_t old POOL;
-    static drum_kit8_t old0 POOL;
+    snd2_blob_t *old = (snd2_blob_t *)(void *)io_scratch();   /* (io_buf: the boot, before the patterns load) */
+    drum_kit8_t *old0 = (drum_kit8_t *)(void *)(io_scratch() + (sizeof(snd2_blob_t) + 7u) / 8u * 8u);
     uint32_t k;
     if (!blob_load(0, &snd_io, sizeof snd_io) && snd_io.fmt == SND_FMT) {
         kit = snd_io.cur.k;
         memcpy(kitx, snd_io.cur.x, SND_NX);
-        memcpy(kits, snd_io.kits, sizeof kits);
+        memcpy(kits, snd_io.kits, sizeof snd_io.kits);
         kits_used = snd_io.used;
         snd_kc = snd_io.kc;
+        snd_load_hi();
         return;
     }
-    if (!blob_load(0, &old, sizeof old) && old.fmt == SND_FMT2) {   /* saved before MT and HT */
-        kit_from8(&kit, &old.cur.k);
-        memcpy(kitx, old.cur.x, SND_NX); x_from8(kitx);
-        for (k = 0; k < NKIT; k++) { kit_from8(&kits[k].k, &old.kits[k].k); memcpy(kits[k].x, old.kits[k].x, SND_NX); x_from8(kits[k].x); }
-        kits_used = old.used;
+    if (!blob_load(0, old, sizeof *old) && old->fmt == SND_FMT2) {   /* saved before MT and HT */
+        kit_from8(&kit, &old->cur.k);
+        memcpy(kitx, old->cur.x, SND_NX); x_from8(kitx);
+        for (k = 0; k < NKIT1; k++) { kit_from8(&kits[k].k, &old->kits[k].k); memcpy(kits[k].x, old->kits[k].x, SND_NX); x_from8(kits[k].x); }
+        kits_used = old->used;
         return;
     }
     for (k = 0; k < NKIT; k++) {                /* the factory kits in the first places */
         kit_from8(&kits[k].k, &DRUM_KITS[k < DRUM_NKITS ? k : 0]);
         snd_x_defaults(kits[k].x);
     }
-    kits_used = (uint8_t)((1u << DRUM_NKITS) - 1u);
-    if (blob_load(0, &old0, sizeof old0))       /* (Drumtonic 0.0 kept the kit alone) */
-        old0 = DRUM_KITS[0];
-    kit_from8(&kit, &old0);
+    kits_used = (uint16_t)((1u << DRUM_NKITS) - 1u);
+    if (blob_load(0, old0, sizeof *old0))       /* (Drumtonic 0.0 kept the kit alone) */
+        *old0 = DRUM_KITS[0];
+    kit_from8(&kit, old0);
     snd_x_defaults(kitx);
 }
 /* ---- each pattern's kit (2026-11-12): seq_pat_t.kit, 0 none, else the kit + 1. A pattern with steps and none takes
@@ -133,7 +157,7 @@ static void snd_load(void)
  * Only main writes kit, kitx and kit_cur (kit and kitx are always kit_cur's): the ISR's swap compiles the sound from
  * kit_stage (motion.c mot_kit, mot_kx; fx_apply_x), and main takes it over (kit_take_over) before the next input. */
 static snd_t kw[NKIT] POOL;                     /* (the kit playing's is kit and kitx: kw only while another plays) */
-static uint8_t kw_on;
+static uint16_t kw_on;
 static snd_t kit_stage POOL;                    /* main: the next pattern's kit (not written while armed or swapped) */
 static volatile uint8_t kit_stage_pat = 0xFFu, kit_stage_k, kit_swaps;
 static uint8_t kit_swaps_seen;
@@ -150,8 +174,8 @@ static uint32_t kits_dirty(void)                /* some kit has edits SAVE would
 static void kit_park(const snd_t *cur)          /* the kit playing's edits, kept for when it plays again */
 {
     kw[kit_cur] = *cur;
-    if (memcmp(cur, &kits[kit_cur], sizeof *cur)) kw_on |= (uint8_t)(1u << kit_cur);
-    else kw_on &= (uint8_t)~(1u << kit_cur);
+    if (memcmp(cur, &kits[kit_cur], sizeof *cur)) kw_on |= (uint16_t)(1u << kit_cur);
+    else kw_on &= (uint16_t)~(1u << kit_cur);
 }
 static const snd_t *kit_src(uint32_t k) { return kw_on >> k & 1u ? &kw[k] : &kits[k]; }   /* (with its edits) */
 static void kit_switch(uint32_t k)              /* main: kit k plays, with its edits; this one's kept */
@@ -198,7 +222,7 @@ static void kit_load(uint32_t k)                /* MIX: kit k (with its edits); 
     if (k == kit_cur) {
         kit = kits[k].k;
         memcpy(kitx, kits[k].x, SND_NX);
-        kw_on &= (uint8_t)~(1u << k);
+        kw_on &= (uint16_t)~(1u << k);
         sound_apply();
     } else {
         kit_switch(k);
@@ -209,15 +233,33 @@ static void kit_load(uint32_t k)                /* MIX: kit k (with its edits); 
 }
 static int kit_store(uint32_t k)                /* written at once */
 {
+    int rc;
     k %= NKIT;
     kit_stage_pat = 0xFFu;
     kits[k].k = kit;
     memcpy(kits[k].x, kitx, SND_NX);
-    kits_used |= (uint8_t)(1u << k);
-    kw_on &= (uint8_t)~(1u << kit_cur | 1u << k);   /* (the edits are k's now: the one playing goes back to its own) */
+    kits_used |= (uint16_t)(1u << k);
+    kw_on &= (uint16_t)~(1u << kit_cur | 1u << k);   /* (the edits are k's now: the one playing goes back to its own) */
     kit_cur = set.kit = (uint8_t)k;             /* (the settings remember it: SAVE) */
     seq_song.p[seq.pat].kit = (uint8_t)(k + 1u);
-    return snd_save();
+    store_sliced = 1;                           /* (in slices: the sound goes on, as a library save) */
+    rc = snd_save();
+    store_sliced = 0;
+    return rc;
+}
+
+static int kit_erase(uint32_t k)                /* MIX, GLO + REC: kit k's key empty, written at once (in slices). Its
+                                                 * sound stays where it was: what plays goes on, a pattern with this kit
+                                                 * still finds it, a kit saved there replaces it */
+{
+    int rc;
+    k %= NKIT;
+    kits_used &= (uint16_t)~(1u << k);
+    store_sliced = 1;
+    rc = snd_save();
+    store_sliced = 0;
+    if (rc) kits_used |= (uint16_t)(1u << k);
+    return rc;
 }
 
 /* ---- the sound library (ui_fm1.c, EDIT's last bank): SND_LIB's sounds and 64 of the user's, in slot 0 (0x97000, empty
@@ -229,13 +271,14 @@ static int kit_store(uint32_t k)                /* written at once */
 #define LIB_FMT 0x3142494Cu                     /* "LIB1" */
 typedef struct { char name[4]; drum_patch_t p; } lib_snd_t;   /* 28 B */
 typedef struct { uint32_t fmt, gen; uint64_t used; lib_snd_t s[LIB_USER]; } lib_blob_t;   /* 1808 B; gen: the saves */
-static lib_blob_t lib_user POOL, lib_other POOL;
+static lib_blob_t lib_user POOL;
 static uint8_t lib_save_req;
 static void lib_load(void)                      /* the newer of the two valid copies (also: back to the flash's after a failed save) */
 {
+    lib_blob_t *o = (lib_blob_t *)(void *)io_scratch();   /* (the other copy: io_buf, never meets a save or a load) */
     int a = !slot_load(LIB_SLOT, &lib_user, sizeof lib_user) && lib_user.fmt == LIB_FMT;
-    int b = !slot_load(LIB_SLOT + 1u, &lib_other, sizeof lib_other) && lib_other.fmt == LIB_FMT;
-    if (b && (!a || (int32_t)(lib_other.gen - lib_user.gen) > 0)) lib_user = lib_other;
+    int b = !slot_load(LIB_SLOT + 1u, o, sizeof *o) && o->fmt == LIB_FMT;
+    if (b && (!a || (int32_t)(o->gen - lib_user.gen) > 0)) lib_user = *o;
     else if (!a) {
         memset(&lib_user, 0, sizeof lib_user);
         lib_user.fmt = LIB_FMT;
@@ -260,7 +303,16 @@ typedef struct { seq_track_t t[DRUM_NCH]; uint8_t len, rate, swing, rsv; } seq_p
 #define SONG_BLOB 1u
 #define SONG_NBLOB 5u
 #define SONG_MAX (4u + sizeof(seq_song_t) + 4u + NLANE * sizeof(lane_t) + sizeof lfos)
-static uint8_t song_io[SONG_MAX] POOL;          /* a save's bytes, a load's, HOME + REC's */
+static union { uint8_t song[SONG_MAX]; snd_hi_t hi; uint64_t align; } io_buf;   /* a save's bytes, a load's, HOME + REC's: the patterns' (song_io),
+                                                 * or kits 9..16's (snd_save, snd_load_hi: never at once). In the RAM, not
+                                                 * the pool: the reverb's memory */
+#define song_io io_buf.song
+static snd_hi_t *snd_hi_io(void) { return &io_buf.hi; }
+static uint8_t *io_scratch(void) { return io_buf.song; }   /* (8-byte aligned: lib_blob_t's uint64_t) */
+_Static_assert(sizeof io_buf >= NLANE * sizeof(lane_t), "mot_copy's lanes do not fit io_buf");
+_Static_assert(sizeof io_buf >= (sizeof(snd2_blob_t) + 7u) / 8u * 8u + sizeof(drum_kit8_t), "snd_load's old formats do not fit io_buf");
+_Static_assert(sizeof io_buf >= sizeof(lib_blob_t), "lib_load's other copy does not fit io_buf");
+
 _Static_assert(SONG_MAX <= SONG_NBLOB * 0x1000u - 12u, "the patterns' record is bigger than its blobs");
 
 static uint32_t song_pack(uint8_t *b)
@@ -511,13 +563,13 @@ static uint8_t save_req;
 static int save_all(void)                       /* SAVE: the sound and the kits (their edits: into their places), the patterns */
 {
     uint32_t k;
-    uint8_t on = kw_on;
+    uint16_t on = kw_on;
     save_req = 0;
     for (k = 0; k < NKIT; k++)
-        if (k != kit_cur && (kw_on >> k & 1u)) { kits[k] = kw[k]; kits_used |= (uint8_t)(1u << k); }
+        if (k != kit_cur && (kw_on >> k & 1u)) { kits[k] = kw[k]; kits_used |= (uint16_t)(1u << k); }
     kits[kit_cur].k = kit;
     memcpy(kits[kit_cur].x, kitx, SND_NX);
-    kits_used |= (uint8_t)(1u << kit_cur);
+    kits_used |= (uint16_t)(1u << kit_cur);
     kw_on = 0;
     mot_quant_apply();                          /* (QUANT into the micro timing: what is heard is what is saved) */
     if (snd_save() || song_save()) { kw_on = on; return -1; }   /* (not written: the edits still SAVE's to do) */
@@ -537,6 +589,7 @@ static int pat_revert(uint32_t pat)             /* the pattern as last saved: 0,
 
 #include "undo.c"
 #include "ui_fm1.c"
+#include "backup.c"                             /* the saves over MIDI: a backup on a computer, a restore from it */
 
 #ifdef DINGHY_HOST
 static int host_probe(const char *name, const int *a, int n, int *got)   /* tests/host.c's "expect" (the docs there) */
@@ -568,6 +621,7 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("solo")) *got = seq.solo;
     else if (IS("fill")) *got = mot_fill;
     else if (IS("ask")) *got = ui.ask;
+    else if (IS("bkstate")) *got = bk_st;                             /* a restore (backup.c BS_*) */
     else if (IS("held")) *got = ui.held;
     else if (IS("librow")) *got = ui.lib_row;
     else if (IS("libused")) *got = (int)(lib_user.used >> A(0) % LIB_USER & 1u);   /* user row n (0..63) */
@@ -580,7 +634,7 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("lfooff")) *got = mot_lfo_off[A(0) % DRUM_NCH][A(1) % P_COND];
     else if (IS("param")) *got = (int)mot_base(A(0) % DRUM_NCH, A(1));  /* the knob's value: channel param */
     else if (IS("live")) { uint32_t v = mot_ov[A(0) % DRUM_NCH][A(1) % P_COND]; *got = v == MOT_NONE ? -1 : (int)v; }   /* what a lane plays now */
-    else if (IS("fx")) *got = kitx[X_FX + A(0) % FX_NP];
+    else if (IS("fx")) *got = (int)fx_get(kitx + X_FX, A(0) % FX_NP);   /* as the knob shows it */
     else if (IS("undo")) *got = (undo.back >= 0) | (undo.fwd >= 0) << 1;   /* 1: OCT- has somewhere to go, 2: OCT+ */
     else if (IS("guide")) *got = guide_btn();                            /* the button whose guide shows, -1 none */
     else if (IS("bot")) *got = bot_drop * 2 + bot_ok;                     /* the band's right side: fields left out * 2 + fits beside the left */
@@ -603,6 +657,9 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("playstep")) *got = seq.step;
     else if (IS("send")) *got = A(1) ? drum_cfg[A(0) % DRUM_NCH].sdly : drum_cfg[A(0) % DRUM_NCH].srev;   /* channel 0 rev / 1 dly, Q15 */
     else if (IS("rvquiet")) *got = fx.rv_quiet;
+    else if (IS("rvtype")) *got = rv.cur;                               /* the reverb type playing (fx_rv.c) */
+    else if (IS("rvidle")) *got = fx.rv_quiet >= (rv.cur == RV_CLASSIC ? FX_RV_QUIET : 2 * rv.top + 64);
+    else if (IS("rvfits")) { int32_t t; *got = 1; for (t = 0; t < RV_NTYPE; t++) if (rv_used(t) > RV_MEM) *got = 0; }   /* (clears its memory) */
     else return -1;
     return 0;
 #undef IS
@@ -612,7 +669,6 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
 
 /* the processor, for platform.c at power-on (before the app: the clock, the supplies, core 1): two cores at 320 MHz on
  * the DC-DC, always (until 2026-11-12 SETTINGS > CPU MODE chose it, 2 x 360 MHz without a saved choice) */
-static uint32_t app_cpu_mode(void) { return CPU_2X320; }
 
 /* MIDI out, from the main loop and while the screen draws (app_idle): the sequencer's hits (channel 10) and, on the
  * internal clock, the clock, each when its sound is heard (seq_fm1.c) */
@@ -643,7 +699,7 @@ static void app_main(void)
     if (set.fmt != SET_FMT || set.bpm < 40u || set.bpm > 250u || set.pat >= SEQ_NPAT ||
         set.ch > DRUM_NCH || set.kit >= NKIT)
         set.fmt = SET_FMT, set.kit = 0, set.bpm = 120, set.pat = 0, set.ch = 0, set.ext = 0, set.cpu_mode = 0;
-    if (set.cpu_mode >= CPU_NMODE) set.cpu_mode = 0;
+    set.cpu_mode = 0;                           /* (unused: always 2 x 320 MHz, platform.c) */
     if (set.rec_free > 1u) set.rec_free = 0;
     snd_load();
     lib_load();
@@ -662,14 +718,17 @@ static void app_main(void)
 
     for (;;) {
         platform_poll();
-        ui_input();
-        if (lib_save_req) {                     /* a sound into the library: in slices, playing or not */
+        bk_poll();                              /* (a restore: its question's time, its restart) */
+        if (bk_busy()) { uint32_t rel; (void)fm1_input_edges(&rel); (void)fm1_input_note_edges(); }   /* (a restore
+                                                 * writing: no input, no save from RAM over it) */
+        else ui_input();
+        if (lib_save_req && !bk_busy()) {                     /* a sound into the library: in slices, playing or not */
             lib_save_req = 0;
             store_sliced = 1;
             ui_lib_saved(lib_write());
             store_sliced = 0;
         }
-        if (save_req && (seq.run || quiet())) {   /* playing: the erases in slices, the sound goes on (store_sliced) */
+        if (save_req && !bk_busy() && (seq.run || quiet())) {   /* playing: the erases in slices, the sound goes on (store_sliced) */
             store_sliced = seq.run;
             ui_saved(save_all());
             store_sliced = 0;

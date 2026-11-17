@@ -1,0 +1,27 @@
+# Drumtonic on the FM-1: 16 kits on MIX's 16 white keys. GLO + white 12 saves the kit playing there, a tap on white 12
+# loads it; GLO + white 16 the same. Kits 1..8 are saved where they always were (blob 0), 9..16 in slot 2:
+# tests/run_tests.sh runs this with HOST_FLASH, then drumtonic_fm1_kits16b.txt finds them after a restart.
+# white w = bit WHITE[w] (0 2 4 6 7 9 11 12 14 16 18 19 21 23 24 26): white 12 = bit 19, white 16 = bit 26
+50 btn 8
+100 btn 4
+200 expect 7 kitused
+300 keys 0x80000
+350 keys 0
+360 expect 0 kitcur
+400 btndown 7
+500 keys 0x80000
+550 keys 0
+600 btnup 7
+610 expect 2055 kitused
+700 keys 0x80000
+750 keys 0
+760 expect 11 kitcur
+800 btndown 7
+900 keys 0x4000000
+950 keys 0
+1000 btnup 7
+1010 expect 34823 kitused
+1100 keys 0x4000000
+1150 keys 0
+1160 expect 15 kitcur
+1300 end

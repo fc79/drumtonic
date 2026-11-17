@@ -1,0 +1,76 @@
+# Drumtonic on the FM-1: a restore over MIDI (backup.c), the computer's side played by tests/host.c (bk* verbs). The
+# question REPLACE ALL SAVES? over the opening, SETTINGS and the library (shots), HOME says no; data before yes refused;
+# 60 s without an answer is no; a record changed on the way fails it (state 4, the records after it untouched, no
+# restart); then a full restore: every area as the backup, the library (saved after the backup) emptied, a restart.
+# tests/flash/drumtonic_fm1_restore2.txt, on the same HOST_FLASH, finds the backup's state loaded.
+# buttons: 3 SEL 6 EDIT 7 GLO 8 HOME 9 SAVE 12 PLAY; encoders: 0 SELECT 2 KNOB 1 (TEMPO on LIVE)
+30 backup
+35 bkbegin 0
+40 expect 1 bkstate
+45 shot
+100 btn 8
+110 expect 3 bkstate
+120 expect 0 ask
+200 btn 8
+250 expect 1 view
+300 bkbegin 0
+350 shot
+400 btn 8
+410 expect 3 bkstate
+500 btn 8
+600 btn 6
+610 btn 6
+620 btn 6
+630 btn 6
+640 btn 6
+650 btn 6
+660 btn 6
+670 btn 6
+700 bkbegin 0
+750 shot
+800 btn 8
+810 expect 3 bkstate
+900 btn 8
+1000 btn 9
+2000 expect 120 bpm
+2100 backup
+2200 btn 6
+2210 expect 7 bank
+2300 enc 0 39
+2400 btndown 7
+2450 btn 3
+2500 btnup 7
+2600 btndown 7
+2650 btn 3
+2700 btnup 7
+2710 expect 7 ask
+2800 btn 3
+2900 bkhas 3 1
+2910 bkhas 4 1
+3000 btn 8
+3100 enc 2 10
+3200 btn 9
+4000 expect 130 bpm
+4100 bkwrite 6
+4200 bkbegin 0
+4300 btn 8
+4310 expect 3 bkstate
+4400 bkbegin 0
+4500 expect 1 bkstate
+65000 expect 3 bkstate
+65010 expect 0 ask
+65100 bkbegin 0
+65200 btn 3
+65210 expect 2 bkstate
+65300 shot
+65400 bksend bad
+65410 expect 4 bkstate
+65420 bkhas 3 1
+65500 bkbegin 0
+65600 btn 3
+65700 bksend
+65800 expect 5 bkstate
+65900 bkcheck
+65910 bkhas 3 0
+65920 bkhas 4 0
+66000 end

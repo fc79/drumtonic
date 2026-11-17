@@ -44,9 +44,13 @@ enum { ENC_SELECT = 0, ENC_ALGORITHM = 1, ENC_KNOB1 = 2, ENC_KNOB2 = 3, ENC_KNOB
 #define KEY_LED(k) (14u + (k))
 #endif
 
-/* the FM-1's processor, the app's app_cpu_mode (until 2026-11-12 SETTINGS > CPU MODE), set at power-on (each at the lowest supplies known to run it on this
- * FM-1): two cores at the boot loader's 360 MHz on M-VAVE's own supplies; one core at 320 MHz; two cores at 320 MHz */
-enum { CPU_2X360, CPU_1X320, CPU_2X320, CPU_NMODE };
+/* the FM-1's processor: always two cores at 320 MHz on the DC-DC (fm1_cstart). Until 2026-11-12 SETTINGS > CPU MODE also
+ * had two cores at the boot loader's 360 MHz on M-VAVE's own supplies and one core at 320 MHz; until 2026-11-16 a boot
+ * after a failed one, a boot after a crash beside the second core (until power-off), a clock change that hung the boot
+ * before, and a second core that stopped answering all fell back to one core. Now each of those is a restart with the
+ * crash screen (fm1_c1_fail): two cores or none (the user's choice) */
+#define FM1_VEC_C1 0xC100u                      /* a crash record's vec: the second core, why (+ C1_*: ui_fm1.c crash_cause) */
+enum { C1_BAD_JOB = 1, C1_LATE, C1_NO_START, C1_NO_CLOCK };
 #ifdef DINGHY_HOST
 #include "../../tests/host.c"                  /* on a computer: a fake FM-1 (tests/host.c) */
 #else
@@ -62,12 +66,12 @@ enum { CPU_2X360, CPU_1X320, CPU_2X320, CPU_NMODE };
 /* the second core, for the app's render (in the audio ISR): run fn(a) there (1: it took it; 0: do it here),
  * then wait for it (0: done; -1: it failed: it is held for good, do the job here) */
 static int cpu2_run(void (*fn)(uint32_t), uint32_t a) { return fm1_cpu1_run(fn, a); }
-static int cpu2_wait(void) { return fm1_cpu1_wait(); }
+static void fm1_c1_fail(uint32_t why);
+static int cpu2_wait(void) { if (fm1_cpu1_wait() != 0) fm1_c1_fail(fm1_c1_gave_up); return 0; }
 static uint32_t power_now[4];                   /* mV core, mV VDC14, 1: from the DC-DC, mV I/O (0: not read) */
 static const uint32_t *cpu_power(void) { return power_now; }
 static uint32_t cpu_cores(void) { return fm1_c1_on ? 2u : 1u; }   /* running now */
 static uint32_t cpu_mhz(void);                  /* (below: fm1_clock.h) */
-static uint32_t app_cpu_mode(void);             /* (the app: CPU_*; Drumtonic: 2 x 320 MHz) */
 /* the clock change at power-on, kept over a reset: a boot that hung in it does not try again until power-off */
 #define CLKLOG_MAGIC 0x434C4B4Cu                /* "CLKL" */
 static struct { uint32_t magic, st; } clklog __attribute__((section(".noinit")));
@@ -183,6 +187,12 @@ static uint32_t fl_jedec_id;                    /* the flash's JEDEC id, read at
 #else
 #define OTA_IDENTITY (recovery_active ? "FM-1_000" : FELUCCA_ID)
 #endif
+#if !BOARD_SMK37                                /* the FM-1 app's own SysEx (backup.c): not in the USB RESCUE */
+static uint32_t app_sysex(const uint8_t *m, uint32_t n, uint8_t *out, uint32_t max);
+static uint32_t plat_sysex(const uint8_t *m, uint32_t n, uint8_t *out, uint32_t max) { return recovery_active ? 0u : app_sysex(m, n, out, max); }
+#define OTA_APP plat_sysex
+#define OTA_APP_MAX 280u                        /* its longest answer (backup.c BK_MSG_MAX: 277) */
+#endif
 #include "ota.c"
 static void recovery_poll(void);
 static uint32_t ota_now_ms(void) { return fm1_ms; }
@@ -249,6 +259,7 @@ static int area_load(uint32_t at, uint32_t max, uint32_t magic, void *p, uint32_
         return -1;
     return crc32(p, n) == h[2] ? 0 : -1;
 }
+static uint32_t store_gen;                      /* +1 a save written (backup.c: the saves changed under a backup) */
 static uint8_t store_sliced;                    /* the app sets it to save while the sound plays: the erases and the
                                                  * writes in slices of FL_SLICE_US, the interrupts on between them */
 static int area_save(uint32_t at, uint32_t sectors, uint32_t magic, const void *p, uint32_t n)   /* p in RAM */
@@ -258,6 +269,7 @@ static int area_save(uint32_t at, uint32_t sectors, uint32_t magic, const void *
     if (!flash_ok || n > sectors * 0x1000u - sizeof h)
         return -1;
     h[2] = crc32(p, n);
+    store_gen++;                                /* (a backup sees a save made while it is taken: backup.c) */
     for (k = 0; k < sectors; k++) {
         fm1_wdt_feed();                         /* (~50 ms an erase) */
         if ((rc = store_sliced ? fl_sliced(FLS_ERASE, at + k * 0x1000u, 0, 4096u) : fl_erase4k(at + k * 0x1000u, &took)) != 0)
@@ -271,7 +283,7 @@ static int area_save(uint32_t at, uint32_t sectors, uint32_t magic, const void *
 /* one sector each, up to SECTOR_MAX bytes; 0: done. A load that fails leaves p as it was (a copy first) */
 static int sector_load(uint32_t at, void *p, uint32_t n)
 {
-    static uint8_t buf[SECTOR_MAX];
+    static uint8_t buf[SECTOR_MAX] __attribute__((section(".pool")));   /* (the pool: the RAM is the scarcer) */
     if (n > sizeof buf || area_load(at, SECTOR_MAX, STORE_MAGIC, buf, n))
         return -1;
     memcpy(p, buf, n);
@@ -283,7 +295,6 @@ static int blob_load(uint32_t i, void *p, uint32_t n) { return i < NBLOB ? secto
 static int blob_save(uint32_t i, const void *p, uint32_t n) { return i < NBLOB ? area_save(BLOBS_AT + i * 0x1000u, 1u, STORE_MAGIC, p, n) : -1; }
 /* slot i: SLOT_SECT sectors, up to SLOT_MAX bytes. slot_load reads straight into p (no buffer that big): on -1 p holds
  * rubbish, start afresh */
-#define SLOT_MAGIC 0x544F4C53u                  /* "SLOT" */
 static int slot_load(uint32_t i, void *p, uint32_t n) { return i < NSLOT ? area_load(SLOTS_AT + i * SLOT_SECT * 0x1000u, SLOT_MAX, SLOT_MAGIC ^ STORE_MAGIC, p, n) : -1; }
 static int slot_save(uint32_t i, const void *p, uint32_t n)   /* (erases only the sectors n needs: a small record, one) */
 {
@@ -291,7 +302,6 @@ static int slot_save(uint32_t i, const void *p, uint32_t n)   /* (erases only th
 }
 /* blobs i .. i + k - 1 as one record of up to k sectors, its length as it was saved (*n): what grows and shrinks (the
  * FM-1's patterns with their lanes). Read straight into p: on -1 p holds rubbish */
-#define BLOBS_MAGIC 0x53424C42u                 /* "BLBS" */
 static int blobs_load(uint32_t i, uint32_t k, void *p, uint32_t max, uint32_t *n)
 {
     uint32_t at = BLOBS_AT + i * 0x1000u, h[3];
@@ -302,6 +312,40 @@ static int blobs_load(uint32_t i, uint32_t k, void *p, uint32_t max, uint32_t *n
     return 0;
 }
 static int blobs_save(uint32_t i, uint32_t k, const void *p, uint32_t n) { return i + k <= NBLOB ? area_save(BLOBS_AT + i * 0x1000u, k, BLOBS_MAGIC ^ STORE_MAGIC, p, n) : -1; }
+/* an area's raw bytes as stored, its header included (STORE_*, store.h; a backup over MIDI, backup.c): off .. off + n
+ * inside the area (STORE_SET and STORE_BLOB: one sector, STORE_BLOBS: k, STORE_SLOT: SLOT_SECT), else -1 */
+static int store_area(uint32_t kind, uint32_t i, uint32_t k, uint32_t *at, uint32_t *cap)
+{
+    if (kind == STORE_SET && i == 0u && k == 1u) { *at = SETTINGS_AT; *cap = 0x1000u; }
+    else if (kind == STORE_BLOB && i < NBLOB && k == 1u) { *at = BLOBS_AT + i * 0x1000u; *cap = 0x1000u; }
+    else if (kind == STORE_BLOBS && k && i + k <= NBLOB) { *at = BLOBS_AT + i * 0x1000u; *cap = k * 0x1000u; }
+    else if (kind == STORE_SLOT && i < NSLOT && k == 1u) { *at = SLOTS_AT + i * SLOT_SECT * 0x1000u; *cap = SLOT_SECT * 0x1000u; }
+    else return -1;
+    return 0;
+}
+static int store_raw_read(uint32_t kind, uint32_t i, uint32_t k, uint32_t off, void *p, uint32_t n)
+{
+    uint32_t at, cap;
+    if (!flash_ok || store_area(kind, i, k, &at, &cap) || off > cap || n > cap - off) return -1;
+    return st_read(at + off, p, n);
+}
+/* an area emptied (a restore of a backup where it was empty, backup.c): its first sector erased, the header with it */
+static int store_raw_clear(uint32_t kind, uint32_t i, uint32_t k)
+{
+    uint32_t at, cap, took;
+    if (!flash_ok || store_area(kind, i, k, &at, &cap)) return -1;
+    store_gen++;
+    fm1_wdt_feed();
+    return store_sliced ? fl_sliced(FLS_ERASE, at, 0, 4096u) : fl_erase4k(at, &took);
+}
+/* a restart asked by the app (a restore done, backup.c): as after an update, it never counts as a failed boot */
+static void plat_restart(void)
+{
+    bootguard_clear(&bootguard);
+    usb_detach();
+    fm1_delay_ms(30);
+    fm1_reboot();
+}
 #if BOARD_SMK37
 /* the store's owner (the kit's convention, store.h): our tag, load as ever; anything else (the stock settings,
  * another port's data) is cleared once and the tag written, before the audio starts */
@@ -475,8 +519,32 @@ static void platform_poll(void)
 }
 
 #if !BOARD_SMK37
-static void crash_draw(uint32_t pc, uint32_t rets, uint32_t emu, uint32_t dbg, uint32_t sp, uint32_t core, uint32_t up_ms, uint32_t count);
+static void crash_draw(uint32_t pc, uint32_t rets, uint32_t emu, uint32_t dbg, uint32_t sp, uint32_t core, uint32_t up_ms, uint32_t count, uint32_t vec);
 static void crash_foot(uint32_t left);          /* (ui_fm1.c) */
+#endif
+#if FM1_HAS_CPU1
+static uint32_t c1_crash_count;                 /* fm1_crash.count at power-on: core 1 wrote its own if it differs */
+static void fm1_c1_fail(uint32_t why)           /* the second core did not start, or stopped answering: the crash screen,
+                                                 * then a restart, never one core. Its own fault if it wrote one
+                                                 * (fm1_irq.h fm1_fault_c), else why (C1_*) */
+{
+    uint32_t n = fm1_crash.magic == FM1_CRASH_MAGIC ? fm1_crash.count : 0u;
+    fm1_irq_off();
+    if (!(fm1_crash.magic == FM1_CRASH_MAGIC && fm1_crash.core == 1u && n != c1_crash_count)) {
+        uint32_t early = fm1_crash.magic == FM1_CRASH_MAGIC ? fm1_crash.early : 0u, i;
+        for (i = 0; i < sizeof fm1_crash / 4u; i++) ((uint32_t *)(void *)&fm1_crash)[i] = 0;
+        fm1_crash.magic = FM1_CRASH_MAGIC;
+        fm1_crash.count = n + 1u;
+        fm1_crash.vec = FM1_VEC_C1 + why;
+        fm1_crash.pc = (uint32_t)(uintptr_t)__builtin_return_address(0);
+        fm1_crash.core = 1;
+        fm1_crash.uptime_ms = fm1_ms;
+        fm1_crash.early = fm1_crash.uptime_ms < 3000u ? early + 1u : 0u;
+    }
+    fm1_fault(&fm1_crash);
+    for (;;)
+        ;
+}
 #endif
 static void fm1_fault(const fm1_crash_t *c)
 {
@@ -484,7 +552,7 @@ static void fm1_fault(const fm1_crash_t *c)
     uint32_t i, t0, v[3] = {c->vec, c->pc, c->rets};
 #if FM1_HAS_CPU1
     if (fm1_c1_on)
-        fm1_cpu1_bar();                         /* a crash beside the second core: one core until power-off */
+        fm1_cpu1_hold();                        /* (stopped for the screen; the restart starts it again) */
 #endif
     fm1_audio_stop();
 #if BOARD_SMK37
@@ -501,7 +569,7 @@ static void fm1_fault(const fm1_crash_t *c)
         fm1_wdt_feed();
 #else
     /* (fm1_ms, not c->uptime_ms: that is TIMER4, which wraps every 179 s) */
-    crash_draw(c->pc, c->rets, c->emu, c->dbg, c->sp, c->core, fm1_ms, c->count);
+    crash_draw(c->pc, c->rets, c->emu, c->dbg, c->sp, c->core, fm1_ms, c->count, c->vec);
     (void)b; (void)i; (void)v;
     for (i = 30u; i; i--) {                     /* 30 s: time to read and photograph it, counted down */
         crash_foot(i);
@@ -558,36 +626,29 @@ void fm1_cstart(void)
     fm1_input_init();
     fm1_adc_init();
 #if FM1_HAS_CPU1
-    {   /* SETTINGS > CPU MODE: the clock and the supplies, before any load, then core 1. The supplies are the lowest
-         * known to run each on this FM-1: 2 x 360 MHz, M-VAVE's own (VDC14 1.60 V from the DC-DC, SYSVDD 1.38 V:
-         * earlier builds on this FM-1; at 1.45 / 1.35 V core 1 still faulted, X0X 1.0.6); 2 x 320 MHz, the
-         * supplies as set by hand (VDC14 1.40 V from the DC-DC, SYSVDD 1.26 V, VDDIO 3.2 V); 1 x 320 MHz, the boot loader's own
-         * (1.40 / 1.26 V, the LDO: one core ran at 360 MHz on them, Drumtonic until 2026-11) */
-        uint32_t f, mode = app_cpu_mode();
-        if ((p3 & 1u) || clklog.magic != CLKLOG_MAGIC) { clklog.magic = CLKLOG_MAGIC; clklog.st = 0; }
+    {   /* the clock and the supplies, before any load, then core 1: two cores at 320 MHz, on the supplies set by hand,
+         * the lowest known to run it on this FM-1 (VDC14 1.40 V from the DC-DC, SYSVDD 1.26 V, VDDIO 3.2 V). The change
+         * is tried at every boot, also after one that hung in it (clklog.st left 1..7): a hang again is a reset, and
+         * two failed boots are the rescue (bootguard) */
+        uint32_t f;
+        if ((p3 & 1u) || clklog.magic != CLKLOG_MAGIC) clklog.magic = CLKLOG_MAGIC;
+        c1_crash_count = fm1_crash.magic == FM1_CRASH_MAGIC ? fm1_crash.count : 0u;
         f = irq_save();
-        if (mode == CPU_2X360) {
-            fm1_supply_mvave();
-        } else {
-            if (!clklog.st) {                   /* (st left 1..7: the last boot hung in the change: 360 MHz then) */
-                (void)fm1_clock_320(&clklog.st);
-                clklog.st = 0;
-            }
-            if (mode == CPU_2X320) fm1_supply_dcdc(11u, 3u);
-            else fm1_supply_ldo(11u, 3u);
-        }
+        clklog.st = 0;
+        (void)fm1_clock_320(&clklog.st);
+        clklog.st = 0;
+        fm1_supply_dcdc(11u, 3u);
         irq_restore(f);
         power_now[0] = 930u + 30u * fm1_sysvdd();   /* what the chip is set to (P33 is slow: read once, here) */
         power_now[1] = 1250u + 50u * fm1_vdc14();
         power_now[2] = fm1_p33_read(FM1_P3_ANA_CON0) >> 3 & 1u;
         power_now[3] = 2800u + 100u * (fm1_p33_read(FM1_P3_ANA_CON5) & 7u);
-        if (!bootguard.failed &&                /* (after a failed boot: one core) */
-            (mode == CPU_2X360 || (mode == CPU_2X320 && fm1_clock_mhz() == 320u))) {   /* (2 x 320 left at 360: one) */
-            fm1_guard_pc_open();                /* core 1 starts in the chip's ROM */
-            (void)fm1_cpu1_start();             /* at power-on, before the audio and the timers (started later it
-                                                 * never reaches its entry); if it does not answer, one core */
-            fm1_guard_enable(FM1_GUARD_PC);
-        }
+        if (fm1_clock_mhz() != 320u) fm1_c1_fail(C1_NO_CLOCK);
+        fm1_guard_pc_open();                    /* core 1 starts in the chip's ROM */
+        f = fm1_cpu1_start() != 0;              /* at power-on, before the audio and the timers (started later it never
+                                                 * reaches its entry) */
+        fm1_guard_enable(FM1_GUARD_PC);
+        if (f) fm1_c1_fail(C1_NO_START);
     }
 #endif
 #if BOARD_SMK37

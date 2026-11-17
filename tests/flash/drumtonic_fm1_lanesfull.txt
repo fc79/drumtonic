@@ -1,0 +1,139 @@
+# Drumtonic on the FM-1: every motion lane used (176 since 2026-11-17): 4 p-locks on BD and 4 on SD in P1 (8 lanes),
+# P1 pasted over P2..P22 (21 x 8: 176), one more paste says MOTION / FULL and the lanes stay 176; SAVE.
+# tests/flash/drumtonic_fm1_lanesfull2.txt, on the same HOST_FLASH, finds the 176 after a restart.
+# buttons: 1 OCT+ 3 SEL 6 EDIT 7 GLO 8 HOME 9 SAVE; encoders 2-5 KNOB 1-4
+50 btn 8
+100 btn 6
+200 keys 0x1
+300 enc 2 5
+350 enc 3 5
+400 enc 4 5
+450 enc 5 5
+600 keys 0
+700 keys 0x8
+750 keys 0
+800 keys 0x1
+900 enc 2 5
+950 enc 3 5
+1000 enc 4 5
+1050 enc 5 5
+1200 keys 0
+1300 expect 8 lanes
+1400 btn 8
+1500 expect 0 view
+1600 btndown 7
+1900 keys 0x4
+1950 keys 0
+2000 btnup 7
+2100 btn 3
+2300 btndown 7
+2600 keys 0x10
+2650 keys 0
+2700 btnup 7
+2800 btn 3
+3000 btndown 7
+3300 keys 0x40
+3350 keys 0
+3400 btnup 7
+3500 btn 3
+3700 btndown 7
+4000 keys 0x80
+4050 keys 0
+4100 btnup 7
+4200 btn 3
+4400 btndown 7
+4700 keys 0x200
+4750 keys 0
+4800 btnup 7
+4900 btn 3
+5100 btndown 7
+5400 keys 0x800
+5450 keys 0
+5500 btnup 7
+5600 btn 3
+5800 btndown 7
+6100 keys 0x1000
+6150 keys 0
+6200 btnup 7
+6300 btn 3
+6500 btndown 7
+6800 keys 0x4000
+6850 keys 0
+6900 btnup 7
+7000 btn 3
+7200 btndown 7
+7500 keys 0x10000
+7550 keys 0
+7600 btnup 7
+7700 btn 3
+7900 btndown 7
+8200 keys 0x40000
+8250 keys 0
+8300 btnup 7
+8400 btn 3
+8600 btndown 7
+8900 keys 0x80000
+8950 keys 0
+9000 btnup 7
+9100 btn 3
+9300 btndown 7
+9600 keys 0x200000
+9650 keys 0
+9700 btnup 7
+9800 btn 3
+10000 btndown 7
+10300 keys 0x800000
+10350 keys 0
+10400 btnup 7
+10500 btn 3
+10700 btndown 7
+11000 keys 0x1000000
+11050 keys 0
+11100 btnup 7
+11200 btn 3
+11400 btndown 7
+11700 keys 0x4000000
+11750 keys 0
+11800 btnup 7
+11900 btn 3
+12100 expect 128 lanes
+12200 btn 1
+12400 btndown 7
+12700 keys 0x1
+12750 keys 0
+12800 btnup 7
+12900 btn 3
+13100 btndown 7
+13400 keys 0x4
+13450 keys 0
+13500 btnup 7
+13600 btn 3
+13800 btndown 7
+14100 keys 0x10
+14150 keys 0
+14200 btnup 7
+14300 btn 3
+14500 btndown 7
+14800 keys 0x40
+14850 keys 0
+14900 btnup 7
+15000 btn 3
+15200 btndown 7
+15500 keys 0x80
+15550 keys 0
+15600 btnup 7
+15700 btn 3
+15900 btndown 7
+16200 keys 0x200
+16250 keys 0
+16300 btnup 7
+16400 btn 3
+16600 expect 176 lanes
+16700 btndown 7
+17000 keys 0x800
+17050 keys 0
+17100 btnup 7
+17200 btn 3
+17400 expect 176 lanes
+17500 btn 9
+19000 end

@@ -86,6 +86,7 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 
 /* storage in RAM, store.h's sizes (as tests/host.c, without HOST_FLASH) */
 static uint8_t store_sliced;
+static uint32_t store_gen;                      /* (as platform.c: +1 a save written) */
 #include "store.h"
 static uint8_t host_set[SECTOR_MAX + 4], host_blob[NBLOB][SECTOR_MAX + 4], host_slot[NSLOT][SLOT_MAX + 4];
 static uint32_t emu_saves;                      /* the saves so far (the page can say "saved") */
@@ -101,6 +102,7 @@ static int host_save(uint8_t *a, uint32_t max, const void *p, uint32_t n)
     a[0] = 1; a[1] = (uint8_t)n; a[2] = (uint8_t)(n >> 8); a[3] = (uint8_t)(n >> 16);
     memcpy(a + 4, p, n);
     emu_saves++;
+    store_gen++;
     return 0;
 }
 static int settings_load(void *p, uint32_t n) { return host_load(host_set, SECTOR_MAX, p, n); }
@@ -119,6 +121,48 @@ static int blobs_load(uint32_t i, uint32_t k, void *p, uint32_t max, uint32_t *n
     return host_load(a, max < k * 0x1000u - 12u ? max : k * 0x1000u - 12u, p, *n);
 }
 static int blobs_save(uint32_t i, uint32_t k, const void *p, uint32_t n) { return i + k <= NBLOB ? host_save(host_blobs[i], k * 0x1000u - 12u, p, n) : -1; }
+
+/* store_raw_clear, plat_restart (platform.c): an area emptied; a restart (here: counted, the run goes on) */
+static uint32_t host_restarts;
+static int store_raw_clear(uint32_t kind, uint32_t i, uint32_t k)
+{
+    uint8_t *a;
+    if (kind == STORE_SET && i == 0u && k == 1u) a = host_set;
+    else if (kind == STORE_BLOB && i < NBLOB && k == 1u) a = host_blob[i];
+    else if (kind == STORE_BLOBS && k && i + k <= NBLOB) a = host_blobs[i];
+    else if (kind == STORE_SLOT && i < NSLOT && k == 1u) a = host_slot[i];
+    else return -1;
+    a[0] = 0;
+    store_gen++;
+    return 0;
+}
+static void plat_restart(void) { host_restarts++; }
+/* store_raw_read (platform.c, as tests/host.c): an area's bytes as the flash holds them, made from the record kept here: [magic]
+ * [length][crc32] then its bytes, 0xFF after it and in an area never saved (a backup over MIDI: backup.c) */
+static int store_raw_read(uint32_t kind, uint32_t i, uint32_t k, uint32_t off, void *p, uint32_t n)
+{
+    const uint8_t *a;
+    uint8_t *d = p;
+    uint32_t cap, magic, len, c = 0xFFFFFFFFu, h[3], j, b;
+    if (kind == STORE_SET && i == 0u && k == 1u) { a = host_set; cap = 0x1000u; magic = STORE_MAGIC; }
+    else if (kind == STORE_BLOB && i < NBLOB && k == 1u) { a = host_blob[i]; cap = 0x1000u; magic = STORE_MAGIC; }
+    else if (kind == STORE_BLOBS && k && i + k <= NBLOB) { a = host_blobs[i]; cap = k * 0x1000u; magic = BLOBS_MAGIC ^ STORE_MAGIC; }
+    else if (kind == STORE_SLOT && i < NSLOT && k == 1u) { a = host_slot[i]; cap = SLOT_SECT * 0x1000u; magic = SLOT_MAGIC ^ STORE_MAGIC; }
+    else return -1;
+    if (off > cap || n > cap - off) return -1;
+    len = a[0] ? (uint32_t)(a[1] | a[2] << 8 | a[3] << 16) : 0u;
+    if (len > cap - 12u) len = 0u;
+    for (j = 0; j < len; j++) {
+        c ^= a[4 + j];
+        for (b = 0; b < 8u; b++) c = c & 1u ? (c >> 1) ^ 0xEDB88320u : c >> 1;
+    }
+    h[0] = magic; h[1] = len; h[2] = ~c;
+    for (j = 0; j < n; j++) {
+        uint32_t at = off + j;
+        d[j] = !a[0] ? 0xFFu : at < 12u ? (uint8_t)(h[at / 4u] >> (8u * (at % 4u))) : at < 12u + len ? a[4 + at - 12u] : 0xFFu;
+    }
+    return 0;
+}
 
 /* MIDI in: status, data 1, data 2, source (1 USB, 2 TRS); out: dropped (the page has no MIDI out yet) */
 static uint8_t mq[64][4];

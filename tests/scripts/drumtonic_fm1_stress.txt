@@ -1,0 +1,105 @@
+# Drumtonic on the FM-1: every effect at once, for tests/cpu2_same.sh and to time the render (DINGHY_PERF=1). P2 (all
+# 10 channels) with BD SD CH OH CY sent to both effects; SD's noise stereo with EQ and DIST; the delay with TAPE, PING
+# and TO REV; the master FILTER high-passed with RESO up (the limiter at work); the reverb through its five types with
+# MOD on and SIZE gliding; the compressor on at the end (COMP 8:1).
+# buttons: 1 OCT+ 2 FX 4 ENV (MIX) 6 EDIT 8 HOME 12 PLAY; encoders: 1 ALGORITHM 2-5 KNOB 1-4; black 1 0x2 BD,
+# 2 0x8 SD, 4 0x100 CH, 5 0x400 OH, 10 0x400000 CY
+# (a first press only closes the opening)
+50 btn 8
+100 btn 4
+150 keys 0x2
+160 keys 0
+200 enc 3 90
+210 enc 4 70
+250 keys 0x8
+260 keys 0
+300 enc 3 100
+310 enc 4 60
+350 keys 0x100
+360 keys 0
+400 enc 3 70
+410 enc 4 90
+450 keys 0x400
+460 keys 0
+500 enc 3 120
+510 enc 4 40
+550 keys 0x400000
+560 keys 0
+600 enc 3 110
+610 enc 4 80
+650 keys 0x8
+660 keys 0
+700 btn 6
+750 btn 1
+760 btn 1
+770 btn 1
+800 enc 5 100
+850 btn 1
+860 btn 1
+900 enc 2 30
+910 enc 3 50
+920 enc 5 70
+950 expect 1 ch
+1000 btn 2
+1050 enc 2 20
+1060 enc 3 30
+1070 enc 4 -30
+1100 btn 2
+1150 enc 3 70
+1160 enc 4 -40
+1200 btn 2
+1250 enc 3 40
+1260 enc 4 30
+1270 enc 5 90
+1300 btn 2
+1350 enc 3 1
+1360 enc 4 60
+1400 btn 2
+1460 enc 3 1
+1470 enc 4 40
+1500 btn 2
+1550 enc 2 -70
+1600 expect 1 fx 10
+1600 expect 0 fx 11
+1600 expect 0 fx 16
+1600 expect 70 fx 14
+1600 expect 127 fx 21
+1650 btn 2
+1660 expect 0 bank
+1700 btn 8
+1750 keys 0x4
+1760 keys 0
+1800 btn 2
+1810 expect 6 view
+1900 btn 12
+1950 expect 0 rvtype
+2000 expect 1 pat
+3000 enc 4 -20
+4000 enc 1 1
+4100 expect 1 rvtype
+4500 enc 4 30
+6000 enc 1 1
+6100 expect 2 rvtype
+6400 enc 4 -50
+8000 enc 1 1
+8100 expect 3 rvtype
+8300 enc 4 40
+10000 enc 1 1
+10100 expect 4 rvtype
+10200 enc 4 -30
+12000 enc 1 -1
+12020 enc 1 -1
+12040 enc 1 -1
+12060 enc 1 -1
+12200 enc 4 20
+12300 expect 0 rvtype
+13000 btn 2
+13010 btn 2
+13020 btn 2
+13030 btn 2
+13040 btn 2
+13050 expect 5 bank
+13100 enc 3 6
+13110 expect 6 fx 16
+16000 btn 12
+20000 end

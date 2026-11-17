@@ -139,7 +139,8 @@ static void mot_clear_step(uint32_t pat, uint32_t ch, uint32_t st)
 /* copy pattern sp's channel sc onto dp's dc (sc DRUM_NCH: every channel onto itself); -1: MOTION FULL (some not) */
 static int mot_copy(uint32_t sp, uint32_t sc, uint32_t dp, uint32_t dc)
 {
-    static lane_t tmp[NLANE] POOL;              /* (the sources first: a paste onto itself stays whole) */
+    lane_t *tmp = (lane_t *)(void *)io_scratch();   /* (the sources first: a paste onto itself stays whole; io_buf as
+                                                 * scratch, app_fm1.c: a paste never meets a save or a load) */
     uint32_t i, n = 0;
     int rc = 0;
     MOT_EACH(i, sp, sc) tmp[n++] = lanes[i];
@@ -371,11 +372,13 @@ static void mot_tick(void)                      /* every render (256 frames), be
     if (!seq.run && mot_run) { mot_run = 0; mot_pat = 0xFF; mot_release(); }
     if (seq.run) {
         mot_step_age++;
-        for (i = 0; i < NLANE; i++) {           /* the glides between neighbours */
+        for (i = 0; i < NLANE; i++) {           /* the glides between neighbours (a lane reused since its step: not
+                                                 * its glide; until 2026-11-17 it went on into the new lane's row, a
+                                                 * condition's, micro timing's or ratchet's past the parameters') */
             const lane_t *l = &lanes[i];
             int32_t a, b, v;
-            if (!lane_rt[i].ramp || !l->used || l->pat != seq.pat || l->ch >= DRUM_NCH || lane_rt[i].hold_left ||
-                lane_rt[i].rec_last)
+            if (!lane_rt[i].ramp || !l->used || l->pat != seq.pat || l->ch >= DRUM_NCH || l->param >= P_COND ||
+                lane_rt[i].gen != l->gen || lane_rt[i].hold_left || lane_rt[i].rec_last)
                 continue;
             a = lane_rt[i].from; b = lane_rt[i].to;
             v = a + (b - a) * (int32_t)(mot_step_age < mot_step_len ? mot_step_age : mot_step_len) / (int32_t)mot_step_len;

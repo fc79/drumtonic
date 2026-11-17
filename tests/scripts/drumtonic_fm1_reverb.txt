@@ -1,0 +1,70 @@
+# Drumtonic on the FM-1: the reverb's types (FX > REVERB, ALGORITHM), PRE DLY, SIZE, MOD and WIDTH. BD sent to the reverb,
+# playing; the type changed while it plays (its tail fades out, then the new one); every type fits its memory, and
+# each one goes idle once its tail has ended.
+# buttons: 2 FX 4 ENV 8 HOME 12 PLAY; encoders: 1 ALGORITHM 2-5 KNOB 1-4
+50 expect 1 rvfits
+50 btn 8
+100 btn 4
+200 enc 3 127
+300 btn 2
+350 expect 6 view
+350 expect 0 bank
+350 expect 0 fx 23
+350 expect 90 fx 25
+350 expect 100 fx 27
+350 expect 0 fx 24
+400 enc 1 1
+450 expect 1 fx 23
+450 expect 1 rvtype
+500 btn 12
+1500 expect 0 rvidle
+1600 enc 1 1
+1612 expect 2 fx 23
+1612 expect 1 rvtype
+1700 expect 2 rvtype
+2500 enc 1 1
+2600 expect 3 rvtype
+3000 enc 1 1
+3100 expect 4 rvtype
+3500 enc 3 20
+3600 expect 20 fx 24
+3700 enc 4 -40
+3800 expect 50 fx 25
+4000 btn 2
+4050 expect 1 bank
+4050 expect 4 fx 23
+4100 enc 3 50
+4200 expect 50 fx 26
+4300 enc 4 -100
+4400 expect 0 fx 27
+4500 enc 1 -1
+4600 expect 3 rvtype
+5000 enc 1 -1
+5020 enc 1 -1
+5040 enc 1 -1
+5100 expect 0 fx 23
+5200 expect 0 rvtype
+6000 btn 12
+6010 expect 0 run
+9000 expect 1 rvidle
+9100 btn 12
+9200 enc 1 1
+9300 expect 1 rvtype
+11000 btn 12
+14000 expect 1 rvidle
+14100 btn 12
+14200 enc 1 1
+14300 expect 2 rvtype
+16000 btn 12
+30000 expect 1 rvidle
+30100 btn 12
+30200 enc 1 1
+30300 expect 3 rvtype
+32000 btn 12
+35000 expect 1 rvidle
+35100 btn 12
+35200 enc 1 1
+35300 expect 4 rvtype
+37000 btn 12
+41000 expect 1 rvidle
+41100 end

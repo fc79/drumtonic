@@ -134,6 +134,34 @@ static void choke(void)                         /* CLASSIC: the open hat (5, gro
     if (drum_v[4].on) fails++;
 }
 
+static void pitch_top(void)                    /* PITCH 127 swept down from +4 octaves (AMT 127, decay): the oscillator
+                                                 * holds at the top (0x7FFFFFFF a frame, half the rate) while the sweep is
+                                                 * above it, then falls; until 2026-11-17 the step wrapped past 2^32 first,
+                                                 * so the sweep dropped to near 0 Hz and climbed again on its way down */
+{
+    drum_patch_t p = DRUM_KITS[0].pat[0];
+    const drum_cfg_t *c = &drum_cfg[0];
+    drum_voice_t *v = &drum_v[0];
+    uint32_t b, bad = 0, top = 0;
+    p.p[P_WAVE] = 127; p.p[P_FREQ] = 127; p.p[P_PMODE] = 0; p.p[P_PAMT] = 127; p.p[P_PRATE] = 60;
+    p.p[P_ODEC] = 127; p.p[P_MIX] = 0; p.p[P_DIST] = 0;
+    drum_set_patch(0, &p);
+    silence();
+    drum_hit_isr(0, 120, 0);
+    for (b = 0; b < 400u && v->on; b++) {      /* (the pitch as voice_block takes it, a block at a time) */
+        int32_t pitch = (int32_t)(((int64_t)c->pamt * (v->penv >> 14)) >> 16);
+        uint64_t want = ((uint64_t)c->inc * drum_exp2(pitch > 6 * 65536 ? 6 * 65536 : pitch)) >> 16;
+        uint32_t ph = v->ph;
+        if (want > 0x7FFFFFFFu) { want = 0x7FFFFFFFu; top++; }
+        memset(buf, 0, sizeof buf);
+        drum_render(buf, DRUM_BLK);
+        if (v->ph - ph != (uint32_t)want * DRUM_BLK) bad++;
+    }
+    printf("  pitch at the top: %u blocks held there, %u off the sweep\n", (unsigned)top, (unsigned)bad);
+    if (bad || !top) { printf("    FAIL: the sweep wrapped\n"); fails++; }
+    load_kit(&DRUM_KITS[0]);
+}
+
 static void cost(void)                         /* all 8 channels sounding, hit every 1/8 s, for 20 s */
 {
     struct timespec a, b;
@@ -220,6 +248,7 @@ int main(void)
         demo(&DRUM_KITS[k]);
     }
     choke();
+    pitch_top();
     library();
     dist_makeup_check();
     cost();

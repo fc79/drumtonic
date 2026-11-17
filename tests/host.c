@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef __linux__
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -116,6 +117,7 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 /* storage in RAM (lost at exit, unless HOST_FLASH names a file: read at the start, written at the end, so a build
  * can load what another one saved), store.h's sizes */
 static uint8_t store_sliced;                    /* (as platform.c: a save while playing) */
+static uint32_t store_gen;                      /* (as platform.c: +1 a save written) */
 #include "store.h"
 static uint8_t host_set[SECTOR_MAX + 4], host_blob[NBLOB][SECTOR_MAX + 4], host_slot[NSLOT][SLOT_MAX + 4];
 static int host_load(uint8_t *a, uint32_t max, void *p, uint32_t n)   /* a[0] used, a[1..3] the length */
@@ -129,6 +131,7 @@ static int host_save(uint8_t *a, uint32_t max, const void *p, uint32_t n, const 
     if (n > max) return -1;
     a[0] = 1; a[1] = (uint8_t)n; a[2] = (uint8_t)(n >> 8); a[3] = (uint8_t)(n >> 16);
     memcpy(a + 4, p, n);
+    store_gen++;
     printf("%6u ms  %s %u saved (%u B)\n", fm1_ms, what, i, n);
     return 0;
 }
@@ -148,6 +151,47 @@ static int blobs_load(uint32_t i, uint32_t k, void *p, uint32_t max, uint32_t *n
     return host_load(a, max < k * 0x1000u - 12u ? max : k * 0x1000u - 12u, p, *n);
 }
 static int blobs_save(uint32_t i, uint32_t k, const void *p, uint32_t n) { return i + k <= NBLOB ? host_save(host_blobs[i], k * 0x1000u - 12u, p, n, "blobs", i) : -1; }
+/* store_raw_clear, plat_restart (platform.c): an area emptied; a restart (here: counted, the run goes on) */
+static uint32_t host_restarts;
+static int store_raw_clear(uint32_t kind, uint32_t i, uint32_t k)
+{
+    uint8_t *a;
+    if (kind == STORE_SET && i == 0u && k == 1u) a = host_set;
+    else if (kind == STORE_BLOB && i < NBLOB && k == 1u) a = host_blob[i];
+    else if (kind == STORE_BLOBS && k && i + k <= NBLOB) a = host_blobs[i];
+    else if (kind == STORE_SLOT && i < NSLOT && k == 1u) a = host_slot[i];
+    else return -1;
+    a[0] = 0;
+    store_gen++;
+    return 0;
+}
+static void plat_restart(void) { host_restarts++; }
+/* store_raw_read (platform.c): an area's bytes as the flash holds them, made from the record kept here: [magic]
+ * [length][crc32] then its bytes, 0xFF after it and in an area never saved (a backup over MIDI: backup.c) */
+static int store_raw_read(uint32_t kind, uint32_t i, uint32_t k, uint32_t off, void *p, uint32_t n)
+{
+    const uint8_t *a;
+    uint8_t *d = p;
+    uint32_t cap, magic, len, c = 0xFFFFFFFFu, h[3], j, b;
+    if (kind == STORE_SET && i == 0u && k == 1u) { a = host_set; cap = 0x1000u; magic = STORE_MAGIC; }
+    else if (kind == STORE_BLOB && i < NBLOB && k == 1u) { a = host_blob[i]; cap = 0x1000u; magic = STORE_MAGIC; }
+    else if (kind == STORE_BLOBS && k && i + k <= NBLOB) { a = host_blobs[i]; cap = k * 0x1000u; magic = BLOBS_MAGIC ^ STORE_MAGIC; }
+    else if (kind == STORE_SLOT && i < NSLOT && k == 1u) { a = host_slot[i]; cap = SLOT_SECT * 0x1000u; magic = SLOT_MAGIC ^ STORE_MAGIC; }
+    else return -1;
+    if (off > cap || n > cap - off) return -1;
+    len = a[0] ? (uint32_t)(a[1] | a[2] << 8 | a[3] << 16) : 0u;
+    if (len > cap - 12u) len = 0u;
+    for (j = 0; j < len; j++) {
+        c ^= a[4 + j];
+        for (b = 0; b < 8u; b++) c = c & 1u ? (c >> 1) ^ 0xEDB88320u : c >> 1;
+    }
+    h[0] = magic; h[1] = len; h[2] = ~c;
+    for (j = 0; j < n; j++) {
+        uint32_t at = off + j;
+        d[j] = !a[0] ? 0xFFu : at < 12u ? (uint8_t)(h[at / 4u] >> (8u * (at % 4u))) : at < 12u + len ? a[4 + at - 12u] : 0xFFu;
+    }
+    return 0;
+}
 static void host_flash(int out)                 /* HOST_FLASH: the storage from / to that file */
 {
     const char *path = getenv("HOST_FLASH");
@@ -204,7 +248,7 @@ typedef struct { uint32_t t, keys; int btn; uint8_t st, d1, d2; int8_t enc, encn
  * P hit at velocity V, V 0 = let go), "T fader F V" (0..127), "T wheel W RAW" (0 pitch, 1 mod; raw ADC 0..1023),
  * "T xkey K V" (keybed key K 0..36 at V, 0 = let go: the outer keys 0..4, 32..36); any build: "T shot" (the screen
  * at T -> OUT-T.ppm) */
-enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_SHOT, HS_EXPECT };
+enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_SHOT, HS_EXPECT, HS_BACKUP, HS_BK };
 static const host_ev_t SCRIPT0[] = {
     {200, 1u << 7, -1, 0, 0, 0, -1, 0},                         /* C4 */
     {700, 1u << 7 | 1u << 11 | 1u << 14, -1, 0, 0, 0, -1, 0},   /* + E4 G4: a chord */
@@ -244,6 +288,17 @@ static void read_script(const char *path)
         else if (!strcmp(what, "wheel")) { sscanf(line, "%*u %*s %u %u", &a, &b); e.smk = HS_WHEEL; e.sa = (uint8_t)a; e.sb = (uint16_t)b; }
         else if (!strcmp(what, "xkey")) { sscanf(line, "%*u %*s %u %u", &a, &b); e.smk = HS_XKEY; e.sa = (uint8_t)a; e.sb = (uint16_t)b; }
         else if (!strcmp(what, "shot")) e.smk = HS_SHOT;   /* (any board: the screen now -> OUT-<ms>.ppm) */
+        else if (!strcmp(what, "backup")) e.smk = HS_BACKUP;   /* (the FM-1: a backup over MIDI, checked: host_backup) */
+        else if (!strncmp(what, "bk", 2) && strlen(what) < 12u) {   /* (the restore's steps: host_bk) */
+            char w2[16] = "";
+            int v1 = 0, v2 = 0;
+            sscanf(line, "%*u %*s %15s %d", w2, &v2);
+            if (!strcmp(w2, "bad")) v1 = 1; else v1 = atoi(w2);
+            e.smk = HS_BK; e.sb = (uint16_t)host_xn; e.sa = 0;
+            snprintf(host_xname[host_xn], sizeof host_xname[0], "%s", what);
+            host_xarg[host_xn][0] = v1; host_xarg[host_xn][1] = v2;
+            host_xn++;
+        }
         else if (!strcmp(what, "expect") && host_xn < 4096) {   /* expect V NAME [A B C D] */
             int *x = host_xarg[host_xn], k;
             char nm[16] = "";
@@ -298,6 +353,156 @@ static void write_ppm_as(const char *name)
     }
     fclose(f);
 }
+#if !BOARD_SMK37
+/* "T backup": the computer's side of a backup over MIDI (backup.c), with every check: INFO, each record pulled a chunk at
+ * a time and compared with what was saved here, the refusals, a save seen in gen, DONE; and every area saved here must be
+ * in the record table (a new kind of save not in the backup fails here) */
+static uint32_t app_sysex(const uint8_t *m, uint32_t n, uint8_t *out, uint32_t max);
+static int bk_area(uint32_t id, uint32_t *kind, uint32_t *i, uint32_t *k);
+static uint32_t hb_rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static uint32_t host_ask(uint32_t cmd, const uint8_t *body, uint32_t n, uint8_t *a)   /* a: the ask, then the answer (as
+                                                 * on the FM-1: ota_dec); the answer's body length, 0 if none or bad */
+{
+    uint32_t s = 0, i, r, len;
+    a[0] = 0; a[1] = 0x59; a[2] = (uint8_t)cmd; a[3] = (uint8_t)n; a[4] = (uint8_t)(n >> 8); a[5] = 0;
+    for (i = 0; i < n; i++) { a[6 + i] = body[i]; s += body[i]; }
+    a[6 + n] = (uint8_t)~s;
+    if (!(r = app_sysex(a, 7u + n, a, 640u))) return 0;
+    len = (uint32_t)a[3] | (uint32_t)a[4] << 8 | (uint32_t)a[5] << 16;
+    for (s = 0, i = 0; i < len && 6u + i < r; i++) s += a[6 + i];
+    if (r < 9u || a[0] || a[1] != 0x59 || a[2] != cmd || len + 7u != r || (uint8_t)~s != a[r - 1u] || a[6] != 'D' || a[7] != 'B')
+        { printf("backup: cmd %02X: a bad answer\n", cmd); return 0; }
+    return len;
+}
+static int hb_used(uint32_t kind, uint32_t i)
+{
+    return kind == STORE_SET ? host_set[0] : kind == STORE_BLOB ? host_blob[i][0] : kind == STORE_BLOBS ? host_blobs[i][0] : host_slot[i][0];
+}
+static const uint8_t *hb_rec(uint32_t kind, uint32_t i)
+{
+    return kind == STORE_SET ? host_set : kind == STORE_BLOB ? host_blob[i] : kind == STORE_BLOBS ? host_blobs[i] : host_slot[i];
+}
+static uint8_t hb_bak[8][NBLOB * 0x1000u];
+static uint32_t hb_len[8], hb_n;
+static void bk_poll(void);
+static void host_backup(void)
+{
+    static uint8_t a[640], rec[NBLOB * 0x1000u], info[640];
+    uint8_t q[16];
+    uint32_t n, cnt, chunk, gen, r, bad = 0, total = 0, kind, i, k, missing = 0, id, j, b;
+    q[0] = 'D'; q[1] = 'B';
+    n = host_ask(0x60, q, 2, a);
+    if (n < 10u || a[8] != 2u) { printf("backup: INFO FAILED\n"); host_fails++; return; }
+    memcpy(info, a, sizeof info);
+    hb_n = a[15] < 8u ? a[15] : 8u;
+    chunk = (uint32_t)a[9] | (uint32_t)a[10] << 8; gen = hb_rd32(a + 11); cnt = a[15];
+    if (n != 10u + 16u * cnt || chunk == 0u || chunk > 256u) bad++;
+    for (r = 0; r < cnt; r++) {
+        const uint8_t *e = info + 16 + 16u * r;
+        uint32_t cap = hb_rd32(e + 6), len = hb_rd32(e + 10), off, c = 0xFFFFFFFFu;
+        id = e[0];
+        if (id != r || bk_area(id, &kind, &i, &k)) { bad++; continue; }
+        if (!hb_used(kind, i) != !len || (e[1] & 1u) != (len != 0u) || len > cap || len > sizeof rec) { printf("backup: %.4s: used %d, len %u\n", (const char *)e + 2, hb_used(kind, i), len); bad++; continue; }
+        for (off = 0; off < len; off += chunk) {
+            uint32_t m = len - off < chunk ? len - off : chunk;
+            q[2] = (uint8_t)id; q[3] = (uint8_t)off; q[4] = (uint8_t)(off >> 8); q[5] = (uint8_t)(off >> 16); q[6] = (uint8_t)(off >> 24);
+            q[7] = (uint8_t)m; q[8] = (uint8_t)(m >> 8);
+            if (host_ask(0x61, q, 9, a) != 14u + m || a[8] != id || hb_rd32(a + 9) != off || a[15] != 0u || hb_rd32(a + 16) != gen) { bad++; break; }
+            memcpy(rec + off, a + 20, m);
+        }
+        hb_len[r] = len; if (len) memcpy(hb_bak[r], rec, len);
+        if (!len) continue;
+        for (j = 12; j < len; j++) { c ^= rec[j]; for (b = 0; b < 8u; b++) c = c & 1u ? (c >> 1) ^ 0xEDB88320u : c >> 1; }
+        if (hb_rd32(rec + 4) + 12u != len || ~c != hb_rd32(rec + 8) || memcmp(rec + 12, hb_rec(kind, i) + 4, len - 12u))
+            { printf("backup: %.4s: the bytes differ from the save\n", (const char *)e + 2); bad++; }
+        total += len;
+    }
+    for (kind = STORE_SET; kind <= STORE_SLOT; kind++)   /* every area saved here: in the table */
+        for (i = 0; i < (kind == STORE_SET ? 1u : kind == STORE_SLOT ? NSLOT : NBLOB); i++) {
+            uint32_t found = 0, kk, ii, kn;
+            if (!hb_used(kind, i)) continue;
+            for (id = 0; id < cnt; id++) if (!bk_area(id, &kk, &ii, &kn) && kk == kind && ii == i) found = 1;
+            if (!found) { printf("backup: area %u %u saved, not in the backup\n", kind, i); missing++; }
+        }
+    q[2] = 99; q[3] = q[4] = q[5] = q[6] = 0; q[7] = 1; q[8] = 0;   /* the refusals: no such id, past the end, n 0 */
+    if (host_ask(0x61, q, 9, a) != 14u || a[15] != 1u) bad++;
+    q[2] = 0; q[3] = 0xFF; q[4] = 0x7F;
+    if (host_ask(0x61, q, 9, a) != 14u || a[15] != 2u) bad++;
+    q[3] = q[4] = 0; q[7] = 0;
+    if (host_ask(0x61, q, 9, a) != 14u || a[15] != 4u) bad++;
+    if (host_set[0]) {                          /* a save after INFO: gen says so */
+        settings_save(host_set + 4, (uint32_t)(host_set[1] | host_set[2] << 8 | host_set[3] << 16));
+        q[7] = 12; q[8] = 0;
+        if (host_ask(0x61, q, 9, a) != 26u || hb_rd32(a + 16) == gen) bad++;
+    }
+    q[2] = 0;
+    if (host_ask(0x62, q, 3, a) != 3u || a[8] != 0u) bad++;
+    printf("%6u ms  backup: %u records, %u B, %u bad, %u saved areas not in it: %s\n", fm1_ms, cnt, total, bad, missing,
+           bad || missing ? "FAIL" : "ok");
+    if (bad || missing) host_fails++;
+}
+#endif
+#if !BOARD_SMK37
+/* the restore's computer side, a step a verb, so the script presses SEL / HOME and lets time pass between them:
+ * "bkbegin S" (BEGIN with the last backup's list: status S), "bkwrite S" (one WRITE of its first record: status S),
+ * "bksend" (every record and COMMIT: all 0, then a restart), "bksend bad" (record 2 sent with a byte changed: 7, then
+ * nothing more, no restart), "bkcheck" (every area as the backup: the empty ones empty), "bkhas ID V" (that record's area
+ * holds a valid record: V) */
+static uint32_t hb_fmt(uint32_t r) { return hb_len[r] >= 16u ? hb_rd32(hb_bak[r] + 12) : 0u; }
+static void host_bk(const char *verb, int v, int w)
+{
+    static uint8_t a[640];
+    uint8_t q[16 + 16u * 8u];
+    uint32_t r, ok = 1, n, kind, i, k, off;
+    q[0] = 'D'; q[1] = 'B';
+    if (!strcmp(verb, "bkbegin")) {
+        q[2] = (uint8_t)hb_n;
+        for (r = 0; r < hb_n; r++) {
+            uint8_t *e = q + 3 + 16u * r;
+            memset(e, 0, 16);
+            e[0] = (uint8_t)r;
+            memcpy(e + 4, &hb_len[r], 4);
+            if (hb_len[r]) memcpy(e + 8, hb_bak[r] + 8, 4);
+            n = hb_fmt(r); memcpy(e + 12, &n, 4);
+        }
+        n = host_ask(0x63, q, 3u + 16u * hb_n, a);
+        ok = n == 4u && a[8] == (uint8_t)v;
+    } else if (!strcmp(verb, "bkwrite") || !strcmp(verb, "bksend")) {
+        int bad = !strcmp(verb, "bksend") && v == 1;
+        for (r = 0; r < hb_n && ok; r++)
+            for (off = 0; off < hb_len[r] && ok; off += 256u) {
+                uint8_t d[16 + 256];
+                uint32_t m = hb_len[r] - off < 256u ? hb_len[r] - off : 256u, last = off + m == hb_len[r];
+                d[0] = 'D'; d[1] = 'B'; d[2] = (uint8_t)r; memcpy(d + 3, &off, 4); d[7] = (uint8_t)m; d[8] = (uint8_t)(m >> 8);
+                memcpy(d + 9, hb_bak[r] + off, m);
+                if (bad && r == 2u && off == 0u) d[9 + 20] ^= 0x55u;
+                n = host_ask(0x65, d, 9u + m, a);
+                if (!strcmp(verb, "bkwrite")) { ok = n == 11u && a[15] == (uint8_t)v; goto done; }
+                if (bad && r == 2u && last) { ok = n == 11u && a[15] == 7u && a[16] == 4u; goto done; }
+                if (n != 11u || a[15] != 0u) { printf("bksend: record %u at %u: status %u\n", r, off, n == 11u ? a[15] : 255u); ok = 0; }
+            }
+        if (ok && !bad) {
+            uint32_t before = host_restarts;
+            n = host_ask(0x66, q, 2, a);
+            ok = n == 3u && a[8] == 0u;
+            if (ok) { uint32_t t; for (t = 0; t < 1000u && host_restarts == before; t++) { fm1_ms++; bk_poll(); } ok = host_restarts == before + 1u; }
+        }
+    } else if (!strcmp(verb, "bkcheck")) {
+        for (r = 0; r < hb_n; r++) {
+            uint8_t raw[NBLOB * 0x1000u];
+            bk_area(r, &kind, &i, &k);
+            if (!hb_len[r]) { if (hb_used(kind, i)) { printf("bkcheck: record %u not emptied\n", r); ok = 0; } continue; }
+            if (store_raw_read(kind, i, k, 0, raw, hb_len[r]) || memcmp(raw, hb_bak[r], hb_len[r])) { printf("bkcheck: record %u differs\n", r); ok = 0; }
+        }
+    } else if (!strcmp(verb, "bkhas")) {
+        bk_area((uint32_t)v, &kind, &i, &k);
+        ok = !!hb_used(kind, i) == !!w;
+    }
+done:
+    printf("%6u ms  %s %d: %s\n", fm1_ms, verb, v, ok ? "ok" : "FAIL");
+    if (!ok) host_fails++;
+}
+#endif
 static void write_ppm(uint32_t t)
 {
     char name[512];
@@ -322,14 +527,20 @@ static void write_wav(void)
 }
 
 /* DINGHY_PERF=1: the instructions the renders take, per sample (Linux perf counter; the chip runs other code, but
- * sloopDX's engines sit at ~1000-1500 here and fit the ISR, so this is the yardstick) */
+ * sloopDX's engines sit at ~1000-1500 here and fit the ISR, so this is the yardstick); on any computer, their time as a
+ * share of the sound's (the same script before and after a change: faster or not) */
 static long perf_fd = -1;
-static uint64_t perf_insns, perf_frames;
+static uint64_t perf_insns, perf_frames, perf_ns, perf_blocks;
+static int perf_on;
+static uint64_t perf_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec * 1000000000u + (uint64_t)t.tv_nsec; }
 static void perf_open(void)
 {
 #ifdef __linux__
     struct perf_event_attr a;
-    if (!getenv("DINGHY_PERF")) return;
+#endif
+    perf_on = getenv("DINGHY_PERF") != NULL;
+#ifdef __linux__
+    if (!perf_on) return;
     memset(&a, 0, sizeof a);
     a.type = PERF_TYPE_HARDWARE; a.size = sizeof a; a.config = PERF_COUNT_HW_INSTRUCTIONS;
     a.exclude_kernel = 1; a.exclude_hv = 1; a.disabled = 1;
@@ -338,6 +549,9 @@ static void perf_open(void)
 }
 static void perf_report(void)
 {
+    if (perf_on && perf_blocks)                 /* (a render: 256 frames, 5805 us of sound) */
+        printf("perf   %.2f us a render, %.3f %% of real time (this computer)\n", (double)perf_ns / 1e3 / (double)perf_blocks,
+               (double)perf_ns / 1e3 / (double)perf_blocks * 100.0 / (HALF_FRAMES * 1e6 / FS));
     if (perf_fd >= 0 && perf_frames)
         printf("perf   %llu instructions / sample over %llu frames (sloopDX engines: ~1000-1500)\n",
                (unsigned long long)(perf_insns / perf_frames), (unsigned long long)perf_frames);
@@ -364,6 +578,14 @@ static void platform_poll(void)                 /* one call = one millisecond */
             if (!ok) host_fails++;
         } else if (script[step].smk == HS_SHOT) {
             write_ppm(fm1_ms);
+        } else if (script[step].smk == HS_BACKUP) {
+#if !BOARD_SMK37
+            host_backup();
+#endif
+        } else if (script[step].smk == HS_BK) {
+#if !BOARD_SMK37
+            host_bk(host_xname[script[step].sb], host_xarg[script[step].sb][0], host_xarg[script[step].sb][1]);
+#endif
         } else if (script[step].smk) {
 #if BOARD_SMK37
             static uint32_t vel = 100;
@@ -409,7 +631,14 @@ static void platform_poll(void)                 /* one call = one millisecond */
 #ifdef __linux__
         if (perf_fd >= 0) { ioctl(perf_fd, PERF_EVENT_IOC_RESET, 0); ioctl(perf_fd, PERF_EVENT_IOC_ENABLE, 0); }
 #endif
-        app_audio(blk, HALF_FRAMES);
+        if (perf_on) {
+            uint64_t t0 = perf_now();
+            app_audio(blk, HALF_FRAMES);
+            perf_ns += perf_now() - t0;
+            perf_blocks++;
+        } else {
+            app_audio(blk, HALF_FRAMES);
+        }
 #ifdef __linux__
         if (perf_fd >= 0) {
             long long c = 0;
