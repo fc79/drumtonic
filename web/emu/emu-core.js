@@ -85,4 +85,10 @@ export class EmuCore {
         const v = this.x.emu_probe(args.length);
         return v === -32768 ? null : v;
     }
+    list(spec) {                                // tests/host.c's "list" (the tests): 0 done, -1 not a list
+        const b = new Uint8Array(this.x.memory.buffer, this.x.emu_list_spec(), 256);
+        b.fill(0);
+        for (let i = 0; i < Math.min(spec.length, 255); i++) b[i] = spec.charCodeAt(i) & 127;
+        return this.x.emu_list();
+    }
 }

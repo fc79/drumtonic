@@ -4,6 +4,7 @@
 # back (seq_now: the filter's corrections would take it back up to a clock).
 50 btn 8
 200 btn 8
+250 btn 8
 300 enc 1 1
 400 btn 8
 997 midi 0xF8 0 0

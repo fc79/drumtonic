@@ -1,0 +1,28 @@
+# Drumtonic on the FM-1 on a DAW's clock: a play list that stops at its end (song mode, step 4, 2026-11-17). [P1],
+# [P2], STOP: after P2 the FM-1 is silent (hits unchanged) but plays on as the DAW says (run 1) until its STOP; its
+# START then plays the list from its top. 120 BPM: a clock every 20.8 ms, a pattern 2 s. (hits: P1 18 + P2 30)
+# (a first press only closes the opening; HOME twice: SETTINGS, ALGORITHM on CLOCK: EXT)
+50 btn 8
+200 btn 8
+250 btn 8
+300 enc 1 1
+400 btn 8
+410 expect 0 view
+500 list 1x1 2x1 stop
+1000 clock 120 960
+1500 midi 0xFA 0 0
+1600 expect 0 pat
+3600 expect 1 pat
+5700 expect 1 ended
+5700 expect 1 run
+5700 expect 48 hits
+7400 expect 48 hits
+7500 midi 0xFC 0 0
+7510 expect 0 run
+8000 midi 0xFA 0 0
+8100 expect 0 ended
+8100 expect 1 run
+8100 expect 0 pat
+10100 expect 1 pat
+12100 expect 1 ended
+12200 end

@@ -36,6 +36,8 @@
 4600 btn 8
 4700 shot
 4800 btn 8
+4850 shot
+4870 btn 8
 4900 shot
 5000 btn 11
 5100 keys 0x1

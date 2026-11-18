@@ -5,6 +5,7 @@
 # white 12 = 0x80000, white 13 = 0x200000, black 10 (CY) = 0x400000 (a first press only closes the opening)
 50 btn 8
 200 btn 8
+250 btn 8
 300 enc 1 1
 400 btn 8
 450 btndown 8

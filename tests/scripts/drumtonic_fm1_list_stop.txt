@@ -1,0 +1,37 @@
+# Drumtonic on the FM-1: a play list that stops at its end (song mode, step 4, 2026-11-17). [P1] x2, [P2], STOP:
+# after P2's last step nothing more is heard (hits unchanged), the FM-1 stops as with the button (run 0, MIDI STOP
+# out), the pattern stays P2; PLAY starts the list again at its top. A hit recorded in the last step's second half
+# (LT by MIDI, REC on SEQ) stays on that step: nothing comes after it. Patterns of 16 steps at 120: 2 s, a step 125 ms.
+# (hits: P1 18, P2 30, so 66 at the end and after.) buttons: 8 HOME 11 SEQ 12 PLAY 13 REC; LT: MIDI note 41 (channel 5)
+50 btn 8
+100 list 1x2 2x1 stop
+150 btn 11
+200 btn 13
+1000 btn 12
+1060 expect 0 pat
+3060 expect 0 pat
+3060 expect 1 round
+5060 expect 1 pat
+5060 expect 1 slot
+6950 midi 0x90 41 100
+6960 midi 0x80 41 0
+6990 expect 0 ended
+6990 expect 1 run
+7100 expect 1 ended
+7100 expect 0 run
+7100 expect 1 pat
+7100 expect 66 hits
+9000 expect 66 hits
+7100 expect 1 step 1 5 15
+7100 expect 0 step 1 5 0
+7100 expect 0 step 0 5 0
+7200 btn 13
+9500 btn 12
+9560 expect 0 ended
+9560 expect 1 run
+9560 expect 0 pat
+11560 expect 0 pat
+13560 expect 1 pat
+15600 expect 0 run
+15600 expect 1 ended
+15700 end

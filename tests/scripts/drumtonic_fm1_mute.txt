@@ -15,6 +15,7 @@
 470 expect 0 mute
 500 btn 8
 510 btn 8
+515 btn 8
 520 expect 1 view
 600 keys 0x8
 650 keys 0

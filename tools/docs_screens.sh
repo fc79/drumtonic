@@ -22,3 +22,5 @@ shot 22100 delay
 shot 24700 master
 shot 26000 comp
 shot 27900 guide
+shot 34000 song
+shot 35000 live-song

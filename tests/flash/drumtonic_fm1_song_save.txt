@@ -1,0 +1,28 @@
+# Drumtonic on the FM-1: songs saved with SAVE (song mode, step 7, 2026-11-17), in the settings' record after the
+# settings' 8 bytes (S1 of docs/dev/SONG-MODE.md 4.1). Song 1 written with the keys: P1, then P2 held and P3 tapped x3,
+# END STOP, 125 BPM; song 2: P5. SAVE is lit while a song has changes, dim once saved.
+# tests/flash/drumtonic_fm1_song_save2.txt, on the same HOST_FLASH, finds them after the restart.
+# keys: white 1 = 0x1, 2 = 0x4, 3 = 0x10, 5 = 0x80. buttons: 8 HOME 9 SAVE; encoders: 0 SELECT 1 ALGORITHM 2 KNOB 1
+# 6 PRESETS. led N: 3 lit, 2 dim
+50 btn 8
+100 btn 8
+150 expect 7 view
+200 keys 0x1
+250 keys 0
+300 keys 0x4
+350 keys 0x14
+380 keys 0x4
+400 keys 0
+500 enc 0 -1
+510 enc 1 2
+600 enc 0 1
+610 enc 1 1
+700 enc 2 5
+800 enc 6 1
+900 keys 0x80
+950 keys 0
+1000 expect 3 led 9
+1000 expect 1 songels 2
+1100 btn 9
+2000 expect 2 led 9
+2100 end

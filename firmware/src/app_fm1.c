@@ -558,8 +558,40 @@ static void part_set_len(uint32_t pat, uint32_t ch, int32_t d)   /* one step alo
     mot_all_changed();
 }
 
+#include "arr.c"                                /* the songs (SONG) */
+
 /* ---- saving, and HOME + REC */
 static uint8_t save_req;
+/* the settings' record (0xFC000): the settings' 8 bytes, then ARR_FMT and the 8 songs (song mode, 2026-11-17: S1 of
+ * docs/dev/SONG-MODE.md 4.1). One of only 8 bytes (an older Drumtonic's, a backup of it) still loads: songs empty. An
+ * older Drumtonic finds this one's length wrong and starts on its defaults (kit 1, 120, P1), nothing else lost */
+#define SETS_N (sizeof set + 4u + sizeof arr)
+_Static_assert(sizeof set == 8u, "the settings' 8 bytes come first in their record");
+_Static_assert(SETS_N <= 4096u - 12u && sizeof io_buf >= SETS_N, "the settings and songs do not fit their sector");
+static int sets_save(void)
+{
+    uint8_t *b = io_scratch();
+    uint32_t f = ARR_FMT;
+    memcpy(b, &set, sizeof set);
+    memcpy(b + sizeof set, &f, 4);
+    memcpy(b + sizeof set + 4u, arr, sizeof arr);
+    return settings_save(b, SETS_N);
+}
+static int sets_load(void)
+{
+    uint8_t *b = io_scratch();
+    uint32_t f;
+    if (!settings_load(b, SETS_N)) {
+        memcpy(&f, b + sizeof set, 4);
+        if (f == ARR_FMT) {
+            memcpy(&set, b, sizeof set);
+            memcpy(arr, b + sizeof set + 4u, sizeof arr);
+            arr_check();
+            return 0;
+        }
+    }
+    return settings_load(&set, sizeof set);      /* (8 bytes: before the songs) */
+}
 static int save_all(void)                       /* SAVE: the sound and the kits (their edits: into their places), the patterns */
 {
     uint32_t k;
@@ -573,9 +605,10 @@ static int save_all(void)                       /* SAVE: the sound and the kits 
     kw_on = 0;
     mot_quant_apply();                          /* (QUANT into the micro timing: what is heard is what is saved) */
     if (snd_save() || song_save()) { kw_on = on; return -1; }   /* (not written: the edits still SAVE's to do) */
-    if (memcmp(set_saved, &set, sizeof set)) {
-        if (settings_save(&set, sizeof set)) return -1;
+    if (memcmp(set_saved, &set, sizeof set) || arr_dirty) {   /* (the settings and the songs: one record) */
+        if (sets_save()) return -1;
         memcpy(set_saved, &set, sizeof set);
+        arr_dirty = 0;
     }
     kit_edited = 0;
     return 0;
@@ -592,6 +625,63 @@ static int pat_revert(uint32_t pat)             /* the pattern as last saved: 0,
 #include "backup.c"                             /* the saves over MIDI: a backup on a computer, a restore from it */
 
 #ifdef DINGHY_HOST
+static uint32_t host_num(const char **sp)       /* (host_list: digits, no libc: the emulator has none) */
+{
+    uint32_t v = 0;
+    while (**sp >= '0' && **sp <= '9') v = v * 10u + (uint32_t)(*(*sp)++ - '0');
+    return v;
+}
+static int host_list(const char *spec)          /* tests/host.c's "list" (and "song N ...": that song, arr.c, with
+                                                 * "m" and the channels muted after an element's times: 1x4m1.5);
+                                                 * 0 done, -1 not a list */
+{
+    seq_slot_t s[SEQ_NSLOT];
+    uint16_t mute[SEQ_NSLOT];
+    uint32_t n = 0, first, p, stop = 0, song = 0, i;
+    while (*spec == ' ') spec++;
+    if (!strncmp(spec, "oldset", 6)) return settings_save(&set, sizeof set) ? -1 : 0;   /* ("list oldset": the settings
+                                                 * alone, as before the songs) */
+    if (!strncmp(spec, "song ", 5)) {
+        spec += 5;
+        song = host_num(&spec);
+        if (song < 1u || song > ARR_NSONG) return -1;
+        while (*spec == ' ') spec++;
+    }
+    while (*spec) {
+        if (!strncmp(spec, "stop", 4)) { stop = 1; break; }
+        first = n;
+        for (;;) {                              /* "1,2,2x3" */
+            const char *b = spec;
+            p = host_num(&spec);
+            if (spec == b || p < 1u || p > SEQ_NPAT || n >= SEQ_NSLOT) return -1;
+            s[n].pat = (uint8_t)((p - 1u) | (n == first ? SEQ_EL : 0u));
+            mute[n] = 0;
+            s[n++].rep = 0;
+            if (*spec != ',') break;
+            spec++;
+        }
+        if (*spec++ != 'x') return -1;
+        p = host_num(&spec);
+        s[first].rep = (uint8_t)(p > 64u ? 64u : p);
+        if (*spec == 'm')
+            do { spec++; p = host_num(&spec); if (p < 1u || p > DRUM_NCH) return -1; mute[first] |= (uint16_t)(1u << (p - 1u)); }
+            while (*spec == '.');
+        while (*spec == ' ') spec++;
+    }
+    if (song) {                                 /* (a song: its slots, not the play list) */
+        arr_t *a = &arr[song - 1u];
+        arr_dirty = 1;
+        memset(a, 0, sizeof *a);
+        for (i = 0; i < n; i++) { a->s[i].pat = s[i].pat; a->s[i].rep = s[i].rep; a->s[i].mute = mute[i]; }
+        a->n = (uint8_t)n;
+        a->end = stop ? ARR_STOP : ARR_LOOP;
+        return 0;
+    }
+    for (i = 0; i < n; i++) s[i].mute = mute[i];
+    if (n) seq_list_set(s, n, stop, 0);
+    else seq.list = 0;
+    return 0;
+}
 static int host_probe(const char *name, const int *a, int n, int *got)   /* tests/host.c's "expect" (the docs there) */
 {
 #define IS(s) (!strcmp(name, s))
@@ -609,10 +699,29 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("swing")) *got = seq_song.p[A(0) % SEQ_NPAT].swing;
     else if (IS("pat")) *got = seq.pat;
     else if (IS("next")) *got = seq.next;
-    else if (IS("chain")) *got = seq.chain_n;
+    else if (IS("chain")) *got = (int)seq_list_n();                    /* the play list's slots (0: none) */
+    else if (IS("slot")) *got = seq.list_at;                            /* the slot playing, its element's first, its round */
+    else if (IS("el")) *got = seq.list_el;
+    else if (IS("round")) *got = seq.list_round;
+    else if (IS("pass")) *got = seq.pass;
+    else if (IS("ended")) *got = seq.ended;                             /* a list stopped at its end */
+    else if (IS("song")) *got = ui.song + 1;                            /* SONG: the song shown, 1..8; the element chosen,
+                                                                         * 1.. (its elements + 1: END); a song's elements */
+    else if (IS("songel")) *got = ui.el + 1;
+    else if (IS("srec")) *got = sr.on;                                  /* song REC on */
+    else if (IS("songon")) *got = song_on + 1;                          /* the song on (cued or playing), 0: none; its row */
+    else if (IS("row")) *got = song_on >= 0 && seq_list_n() ? (int)song_row() + 1 : 0;
+    else if (IS("songels")) *got = (int)arr_nel(&arr[A(0) ? (A(0) - 1u) % ARR_NSONG : ui.song]);   /* (0: the one shown) */
+    else if (IS("sn")) *got = arr[ui.song % ARR_NSONG].n;               /* the song shown: its slots; slot N's pattern
+                                                                         * (1..); element N's times; its end, tempo */
+    else if (IS("spat")) *got = A(0) >= 1u && A(0) <= arr[ui.song % ARR_NSONG].n ? (int)arr_pat(&arr[ui.song % ARR_NSONG], A(0) - 1u) + 1 : 0;
+    else if (IS("srep")) *got = A(0) >= 1u && A(0) <= arr_nel(&arr[ui.song % ARR_NSONG]) ? arr[ui.song % ARR_NSONG].s[arr_first(&arr[ui.song % ARR_NSONG], A(0) - 1u)].rep : 0;
+    else if (IS("songend")) *got = arr[ui.song % ARR_NSONG].end;
+    else if (IS("sbpm")) *got = arr[ui.song % ARR_NSONG].bpm;
+    else if (IS("smute")) *got = A(0) >= 1u && A(0) <= arr_nel(&arr[ui.song % ARR_NSONG]) ? arr[ui.song % ARR_NSONG].s[arr_first(&arr[ui.song % ARR_NSONG], A(0) - 1u)].mute : -1;   /* element N's mutes */
     else if (IS("run")) *got = seq.run;
     else if (IS("rec")) *got = rec;
-    else if (IS("view")) *got = ui.view;                                /* V_LIVE 0, SET, MIX, STEPS, SOUND, LFO, FX */
+    else if (IS("view")) *got = ui.view;                                /* V_LIVE 0, SET, MIX, STEPS, SOUND, LFO, FX, SONG 7 */
     else if (IS("bank")) *got = ui.bank[ui.view] % VIEWS[ui.view].n;
     else if (IS("ch")) *got = set.ch;
     else if (IS("spage")) *got = ui.spage;                              /* STEPS: which 16 steps are shown (0: 1-16) */
@@ -691,7 +800,7 @@ static void app_main(void)
 {
     uint32_t cpu_t = 0;
 
-    if (!settings_load(&set, sizeof set)) memcpy(set_saved, &set, sizeof set);   /* (as in the flash: an old format */
+    if (!sets_load()) memcpy(set_saved, &set, sizeof set);   /* (as in the flash: an old format */
     if (set.fmt == 0xD2u && set.ch <= 8u) {     /* differs, so SAVE writes the new one) RS, CY, ALL: 2 places on */
         set.ch = (uint8_t)(set.ch < 8u ? ch_from8(set.ch) : DRUM_NCH);
         set.fmt = SET_FMT;
@@ -719,6 +828,8 @@ static void app_main(void)
     for (;;) {
         platform_poll();
         bk_poll();                              /* (a restore: its question's time, its restart) */
+        if (seq.ended && seq.run && !seq.restart && !seq.ext) transport(0);   /* a list stopped at its end: STOP, as
+                                                 * the button (not a PLAY the ISR has not started yet) */
         if (bk_busy()) { uint32_t rel; (void)fm1_input_edges(&rel); (void)fm1_input_note_edges(); }   /* (a restore
                                                  * writing: no input, no save from RAM over it) */
         else ui_input();

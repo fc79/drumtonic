@@ -1,7 +1,7 @@
 # Drumtonic on the FM-1: a backup over MIDI (backup.c), the computer's side played by tests/host.c ("backup": INFO, every
 # record pulled and compared with what was saved, the refusals, a save seen in gen, DONE; and every area saved must be in
 # the record table). First with nothing saved; then two library sounds (slots 1 and 0), and SAVE (the settings, kits 1-8,
-# the patterns, kits 9-16); then BACKUP / SENT on the screen.
+# the patterns, kits 9-16) with a song (song 3: the settings' record with the songs); then BACKUP / SENT on the screen.
 # buttons: 3 SEL 6 EDIT 7 GLO 8 HOME 9 SAVE
 40 backup
 50 btn 8
@@ -24,6 +24,7 @@
 1210 expect 7 ask
 1300 btn 3
 1310 expect 0 ask
+1400 song 3 1x2 2,3x1 stop
 1500 btn 9
 2500 backup
 2600 shot

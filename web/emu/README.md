@@ -17,8 +17,8 @@ an AudioWorklet. Nothing is installed and nothing leaves the page.
 
 ```sh
 tools/emu.sh                                   # this checkout's firmware: build/emu/drumtonic-emu-dev.html, opened
-web/emu/build.sh 0.9 && node web/emu/test_emu.mjs
-python3 tools/make_installer.py build/drumtonic-0.9.fwsc -o drumtonic-0.9-installer.html   # the Try tab too
+web/emu/build.sh 0.9.5 && node web/emu/test_emu.mjs
+python3 tools/make_installer.py build/drumtonic-0.9.5.fwsc -o drumtonic-0.9.5-installer.html   # the Try tab too
 ```
 
 `EMU_DOCKER=0 web/emu/build.sh` uses an emcc on PATH instead of Docker (emsdk 4.0.10, as the image). A new platform

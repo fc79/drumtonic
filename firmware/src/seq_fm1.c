@@ -63,13 +63,48 @@ static volatile struct {
     uint8_t bpm;                                /* main: 40..250 */
     uint16_t mute, solo;                        /* main: bit = channel */
     uint8_t restart;                            /* main sets, ISR clears: start at step 1 */
-    uint8_t chain_n, chain_at;                  /* main: the chain's length / ISR: where in it */
+    uint16_t list;                              /* main: the play list (below): its length (0: none) | its buffer << 8 |
+                                                 * SEQ_STOP: it stops at its end (else it loops) */
+    uint8_t ended;                              /* ISR: a list stopped at its end: nothing plays (main: transport(0); on
+                                                 * a DAW's clock, silent until its STOP and START) */
+    uint8_t elm_ack;                            /* main: the element mutes taken into mute (as seq_elm_gen) */
+    uint8_t list_cue, jump_slot, jump_req;      /* main: where PLAY starts the list (an element's first slot: a song's
+                                                 * row cued with SEL); a jump to slot jump_slot as this pattern ends
+                                                 * (jump_req + 1: SEL on a song's row, playing) */
+    uint8_t list_at, list_el, list_round;       /* ISR (main as it starts a list): the slot playing, its element's first
+                                                 * slot, the times that element has gone round */
     uint16_t pass;                              /* ISR: times round the pattern since PLAY or it changed (cycles) */
     uint32_t clk_in;                            /* main: MIDI clocks received */
     uint32_t clk_out;                           /* ISR: MIDI clocks due (internal clock) */
     uint32_t eighths;                           /* ISR: eighths since PLAY (the LFOs' time) */
 } seq = {.bpm = 120};
-static uint8_t seq_chain_l[SEQ_NCHAIN];         /* (main writes it before chain_n) */
+/* The play list (song mode, docs/dev/SONG-MODE.md 9-10, 2026-11-17): slots of patterns in elements. An element (bit
+ * SEQ_EL on its first slot) is a chain of 1..16 patterns played rep times, rep on its first slot (0: for ever, the
+ * chain made by hand on LIVE). Main fills the buffer the ISR is not reading and publishes it with one write of
+ * seq.list; the ISR keeps its place by slot. */
+#define SEQ_NSLOT 64u
+#define SEQ_EL 0x80u
+#define SEQ_STOP 0x200u
+#define SEQ_MUTES 0x400u                        /* (seq.list: some element has mutes: each element's start sets them) */
+typedef struct { uint8_t pat, rep; uint16_t mute; } seq_slot_t;   /* pat: the pattern (bits 0-4) | SEQ_EL; rep, mute on
+                                                 * an element's first slot (mute: bit c, channel c; song mode step 10) */
+static seq_slot_t seq_list[2][SEQ_NSLOT];
+static uint8_t seq_jump_done;                   /* (ISR: the jumps taken, as seq.jump_req) */
+static volatile uint16_t seq_elm_mask;          /* ISR: an element's mutes as it starts (a song with mutes: 11.2), heard
+                                                 * until main has made them the player's (seq.elm_ack = seq_elm_gen) */
+static volatile uint8_t seq_elm_gen;
+#define SEQ_PS_N 32u
+static volatile uint32_t seq_ps[SEQ_PS_N], seq_ps_w;   /* ISR -> main (song REC): each pattern as it starts (bit 31 |
+                                                 * seq.list << 12 | its slot << 5 | the pattern) and as its last quarter
+                                                 * begins (bit 30 | the mask that sounds: mutes, a solo as the others' mutes)
+                                                 * (SONG-MODE.md 10.4, 11.2: a short pattern lasts less than a slow loop) */
+static uint32_t seq_ps_r;                       /* (main's) */
+static volatile uint8_t seq_ps_on;              /* main: song REC listening */
+static void seq_ps_push(uint32_t v) { if (seq_ps_w - seq_ps_r < SEQ_PS_N) { seq_ps[seq_ps_w % SEQ_PS_N] = v; RING_PUBLISH(); seq_ps_w++; } }
+static uint32_t seq_mute_now(void) { return seq_elm_gen != seq.elm_ack ? seq_elm_mask : seq.mute; }   /* (ISR) */
+static void seq_elm_start(uint16_t m) { seq_elm_mask = m; seq_elm_gen++; }
+static uint32_t seq_list_n(void) { return seq.list & 0xFFu; }
+static const seq_slot_t *seq_list_l(void) { return seq_list[seq.list >> 8 & 1u]; }
 static volatile uint8_t seq_skip[DRUM_NCH];     /* step + 1 not to play once (a hit recorded ahead: main by hand, the ISR
                                                  * a note repeat's): the next step only, then cleared */
 static volatile uint8_t seq_realign_req[DRUM_NCH];   /* main: + 1 when a part's length changed (PRESETS) */
@@ -81,6 +116,9 @@ static uint8_t seq_late[DRUM_NCH], seq_late_vel[DRUM_NCH];   /* this step's hit 
 static uint8_t seq_early[DRUM_NCH];             /* the next step's hit, early: its 24ths (0: none) */
 static uint8_t seq_early_done[DRUM_NCH], seq_early_pat[DRUM_NCH];   /* step + 1 (and pattern) whose hit went early */
 static uint8_t seq_nx_pat, seq_nx_st;           /* the next step, and its pattern */
+static uint8_t seq_nx_none;                     /* (none: a list stops after this step; a hit near its end stays on it) */
+static uint8_t seq_nx_mask_on;                  /* (the next step starts an element with mutes: its early hits follow them) */
+static uint16_t seq_nx_mask;
 static uint8_t seq_late_n[DRUM_NCH];            /* (its ratchet) */
 /* ratchets (ISR): a hit's next ones, each 24 / n 24ths of a step after the one before; where the next is due, in 24ths
  * of the step playing: 24 and on is in the next step (a late or an early hit's ratchet runs over a step's end) */
@@ -172,7 +210,7 @@ static void seq_hit(uint32_t ch, uint32_t vel)  /* the sequencer's hit: in the h
 }
 static void seq_br_play(uint32_t cv)
 {
-    uint32_t ch = cv >> 8, mute = seq.mute, solo = seq.solo;
+    uint32_t ch = cv >> 8, mute = seq_mute_now(), solo = seq.solo;
     if (ch >= DRUM_NCH || (mute >> ch & 1u) || (solo && !(solo >> ch & 1u))) return;
     seq_out(ch, cv & 0xFFu);
 }
@@ -262,32 +300,91 @@ static uint32_t seq_pos_after(uint32_t pat, uint32_t ch)
     uint32_t s = seq_pos[ch] + 1u;
     return s >= seq_tlen(&seq_song.p[pat], ch) ? 0u : s;
 }
+typedef struct { uint8_t pat, at, el, round, fresh, none, jump, mask_on; uint16_t mask; } seq_after_t;
+static seq_after_t seq_after(uint32_t pat)      /* what plays when pat, the pattern playing, ends: the one asked for, or
+                                                 * the list's next (at, el, round: where in it, as seq.list_*); fresh:
+                                                 * its parts start at step 1 and its passes at 0 (another pattern, or a
+                                                 * list come round to its top: it sounds as PLAY starts it), or each part
+                                                 * goes on (the same one again, also from one element to the next). The
+                                                 * one answer for seq_peek, seq_take_next and kit_follow (main reads it
+                                                 * too: the ISR may move on under it, as before). none: a list that
+                                                 * stops at its end has come to it, nothing plays (pat: the one playing) */
+{
+    seq_after_t a;
+    uint32_t L = seq.list, n = L & 0xFFu, nx = seq.next, at = seq.list_at, el = seq.list_el, rd = seq.list_round, top = 0;
+    a.none = a.jump = a.mask_on = 0;
+    a.mask = 0;
+    if (n && seq.jump_req != seq_jump_done) {   /* a jump asked for: that slot (a song's row), whatever plays now */
+        at = el = seq.jump_slot < n ? seq.jump_slot : 0u;
+        rd = 0;
+        nx = seq_list[L >> 8 & 1u][at].pat & (SEQ_NPAT - 1u);
+        a.jump = 1;
+    } else if (n && nx == pat) {
+        const seq_slot_t *l = seq_list[L >> 8 & 1u];
+        uint32_t rep;
+        if (at >= n || el > at) at = el = rd = 0;   /* (a list shorter than where it was) */
+        rep = l[el].rep;
+        if (at + 1u < n && !(l[at + 1u].pat & SEQ_EL)) at++;   /* the element's next */
+        else if (!rep || rd + 1u < rep) { at = el; if (rep) rd++; }   /* the element again */
+        else if (at + 1u >= n && (L & SEQ_STOP)) a.none = 1;   /* the end: nothing more */
+        else {                                  /* the next element; after the last, the first */
+            if (++at >= n) { at = 0; top = 1; }
+            el = at;
+            rd = 0;
+        }
+        if (!a.none) nx = l[at].pat & (SEQ_NPAT - 1u);
+    }
+    if (n && (L & SEQ_MUTES) && !a.none && (a.jump || el != seq.list_el || top)) {   /* an element starts: its mutes */
+        a.mask_on = 1;
+        a.mask = seq_list[L >> 8 & 1u][el].mute;
+    }
+    a.pat = (uint8_t)nx;
+    a.at = (uint8_t)at;
+    a.el = (uint8_t)el;
+    a.round = (uint8_t)rd;
+    a.fresh = nx != pat || top;
+    return a;
+}
 static void seq_peek(uint32_t pat, uint32_t st)  /* the step after st: seq_nx_pat / seq_nx_st (as seq_take_next will) */
 {
-    uint32_t len = seq_song.p[pat].len;
+    uint32_t len = seq_song.p[pat].len, fresh = 0, ch;
     seq_nx_pat = (uint8_t)pat;
     seq_nx_st = (uint8_t)(st + 1u);
+    seq_nx_none = 0;
+    seq_nx_mask_on = 0;
     if (st + 1u >= (len ? len : 16u)) {
+        seq_after_t a = seq_after(pat);
         seq_nx_st = 0;
-        seq_nx_pat = seq.chain_n >= 2u && seq.next == seq.pat ? seq_chain_l[(seq.chain_at + 1u) % seq.chain_n] : seq.next;
+        seq_nx_pat = a.pat;
+        fresh = a.fresh;
+        seq_nx_none = a.none;
+        seq_nx_mask_on = a.mask_on;
+        seq_nx_mask = a.mask;
     }
-    {
-        uint32_t ch;
-        for (ch = 0; ch < DRUM_NCH; ch++)       /* (a length changed, its realign still to come: as seq_next will) */
-            seq_nx_pos[ch] = (uint8_t)(seq_nx_pat != pat ? 0u : seq_realign_done[ch] != seq_realign_req[ch]
-                                       ? seq_nx_st % seq_tlen(&seq_song.p[pat], ch) : seq_pos_after(pat, ch));
-    }
+    for (ch = 0; ch < DRUM_NCH; ch++)           /* (a length changed, its realign still to come: as seq_next will) */
+        seq_nx_pos[ch] = (uint8_t)(fresh ? 0u : seq_realign_done[ch] != seq_realign_req[ch]
+                                   ? seq_nx_st % seq_tlen(&seq_song.p[pat], ch) : seq_pos_after(pat, ch));
 }
 
-static void seq_fire(uint32_t st)
+static void seq_late_out(void)                  /* a step's end: a late hit not out yet, now */
 {
-    uint32_t ch, pat = seq.pat, mute = seq.mute, solo = seq.solo;
-    const seq_pat_t *p = &seq_song.p[pat];
-    for (ch = 0; ch < DRUM_NCH; ch++) {         /* (a late hit not out yet: now, before the next step's) */
+    uint32_t ch;
+    for (ch = 0; ch < DRUM_NCH; ch++) {
         if (seq_late[ch]) { seq_late[ch] = 0; seq_hit_n(ch, seq_late_vel[ch], 24u, seq_late_n[ch]); }
         if (seq_rat_left[ch]) seq_rat_at[ch] = (uint8_t)(seq_rat_at[ch] >= 24u ? seq_rat_at[ch] - 24u : 0u);   /* (on into this step) */
     }
+}
+static void seq_fire(uint32_t st)
+{
+    uint32_t ch, pat = seq.pat, mute = seq_mute_now(), solo = seq.solo;
+    const seq_pat_t *p = &seq_song.p[pat];
+    seq_late_out();                             /* (before the next step's hits) */
     seq.step = (uint8_t)st;
+    if (seq_ps_on) {                            /* (song REC: a pattern's start, its last quarter's mask) */
+        uint32_t len = p->len ? p->len : 16u;
+        if (!st) seq_ps_push(0x80000000u | (uint32_t)(seq.list & 0x7FFu) << 12 | (uint32_t)(seq.list_at & 63u) << 5 | pat);
+        if (st == len * 3u / 4u) seq_ps_push(0x40000000u | ((mute | (solo ? ~solo : 0u)) & ((1u << DRUM_NCH) - 1u)));
+    }
     SEQ_STEP_HOOK(pat, st);
     for (ch = 0; ch < DRUM_NCH; ch++) {
         uint32_t vel, s = seq_pos[ch], early = seq_early_done[ch] == s + 1u && seq_early_pat[ch] == pat;
@@ -308,7 +405,7 @@ static void seq_fire(uint32_t st)
         seq_hit_n(ch, vel, 0u, SEQ_RATCH(pat, ch, s));   /* (on the step; early but not sent early: the first step, a jump) */
     }
     seq_peek(pat, st);                          /* the next step's early hits */
-    for (ch = 0; ch < DRUM_NCH; ch++) {
+    for (ch = 0; ch < DRUM_NCH && !seq_nx_none; ch++) {
         int32_t m;
         if (!seq_bit(seq_song.p[seq_nx_pat].t[ch].hit, seq_nx_pos[ch])) continue;
         m = SEQ_MICRO(seq_nx_pat, ch, seq_nx_pos[ch]);
@@ -318,7 +415,7 @@ static void seq_fire(uint32_t st)
 
 static void seq_micro_block(void)               /* every block, frac set: the late hits, the ratchets, the next step's early hits */
 {
-    uint32_t ch, f = seq.frac, mute = seq.mute, solo = seq.solo;
+    uint32_t ch, f = seq.frac, mute = seq_mute_now(), solo = seq.solo;
     for (ch = 0; ch < DRUM_NCH; ch++) {
         if (seq_rat_left[ch] && seq_rat_at[ch] < 24u && f >= SEQ_FRAC24(seq_rat_at[ch])) {
             if (!(mute >> ch & 1u) && !(solo && !(solo >> ch & 1u))) seq_hit(ch, seq_rat_vel[ch]);
@@ -337,7 +434,7 @@ static void seq_micro_block(void)               /* every block, frac set: the la
             if (seq_skip[ch] == st + 1u) continue;   /* (a hit by hand recorded there: the step will skip it) */
             seq_early_done[ch] = (uint8_t)(st + 1u);
             seq_early_pat[ch] = (uint8_t)pat;
-            if (!seq_bit(p->t[ch].hit, st) || (mute >> ch & 1u) || (solo && !(solo >> ch & 1u))) continue;
+            if (!seq_bit(p->t[ch].hit, st) || ((seq_nx_mask_on ? seq_nx_mask : mute) >> ch & 1u) || (solo && !(solo >> ch & 1u))) continue;
             if (!SEQ_COND_AT(pat, ch, st)) continue;
             SEQ_LOCK_CH(pat, st, ch);
             seq_hit_n(ch, seq_bit(p->t[ch].acc, st) ? SEQ_VEL_ACC : SEQ_VEL, at, SEQ_RATCH(pat, ch, st));
@@ -345,28 +442,36 @@ static void seq_micro_block(void)               /* every block, frac set: the la
     }
 }
 
-static void seq_take_next(void)                 /* the pattern's end: the asked-for one, or the chain's next */
+static uint32_t seq_take_next(void)             /* the pattern's end: seq_after's; its fresh (none: seq.ended) */
 {
-    uint32_t to = seq.next;
-    if (seq.chain_n >= 2u && seq.next == seq.pat) {
-        seq.chain_at = (uint8_t)((seq.chain_at + 1u) % seq.chain_n);
-        to = seq_chain_l[seq.chain_at];
-        seq.next = (uint8_t)to;
-    }
-    if (to != seq.pat) seq.pass = 0;
+    seq_after_t a = seq_after(seq.pat);
+    if (a.none) { seq.ended = 1; return 0; }
+    if (a.jump) seq_jump_done = seq.jump_req;
+    if (a.mask_on) seq_elm_start(a.mask);
+    seq.list_at = a.at;
+    seq.list_el = a.el;
+    seq.list_round = a.round;
+    seq.next = a.pat;
+    if (a.fresh) seq.pass = 0;
     else seq.pass++;
-    seq.pat = (uint8_t)to;
+    seq.pat = a.pat;
+    return a.fresh;
 }
 
 static void seq_next(void)
 {
-    uint32_t st = seq.step + 1u, len = seq_song.p[seq.pat].len, from = seq.pat, ch;
+    uint32_t st = seq.step + 1u, len = seq_song.p[seq.pat].len, from = seq.pat, fresh = 0, ch;
     if (st >= (len ? len : 16u)) {
         st = 0;
-        seq_take_next();
+        fresh = seq_take_next();
+        if (seq.ended) {                        /* the list's end: the last step's late hits, then nothing */
+            seq_late_out();
+            memset(seq_rat_left, 0, sizeof seq_rat_left);
+            return;
+        }
     }
     for (ch = 0; ch < DRUM_NCH; ch++) {         /* (the same pattern again: each part just goes on) */
-        seq_pos[ch] = (uint8_t)(seq.pat != from ? 0u : seq_pos_after(from, ch));
+        seq_pos[ch] = (uint8_t)(fresh ? 0u : seq_pos_after(from, ch));
         if (seq_realign_done[ch] != seq_realign_req[ch]) {   /* its length changed: in step with the pattern again */
             seq_realign_done[ch] = seq_realign_req[ch];
             seq_pos[ch] = (uint8_t)(st % seq_tlen(&seq_song.p[seq.pat], ch));
@@ -463,7 +568,11 @@ static void seq_run(void)
         seq_clkph = 0;
         seq_ticks = 0;
         seq.pat = seq.next;
-        seq.chain_at = 0;
+        seq.list_at = seq.list_el = seq.list_cue;   /* (the list's cued row, or its top) */
+        seq.list_round = 0;
+        seq_jump_done = seq.jump_req;
+        if ((seq.list & SEQ_MUTES) && seq_list_n()) seq_elm_start(seq_list_l()[seq.list_el].mute);   /* (the cued row's) */
+        seq.ended = 0;
         seq.pass = 0;
         seq.eighths = 0;
         seq.step = 0;
@@ -480,6 +589,13 @@ static void seq_run(void)
         seq_clk_out(1);
         memset(seq_pos, 0, sizeof seq_pos);
         seq_fire(0);
+        return;
+    }
+    if (seq.ended) {                            /* (a list stopped at its end: silent, no clock out, until stopped or
+                                                 * started again) */
+        memset(seq_late, 0, sizeof seq_late);
+        memset(seq_early, 0, sizeof seq_early);
+        memset(seq_rat_left, 0, sizeof seq_rat_left);
         return;
     }
     if (seq.ext) { seq_ext(tps); return; }
@@ -526,7 +642,7 @@ static int32_t seq_frac_micro(uint32_t f)       /* where in the step (frac) as 2
 }
 static void seq_nr_hit(uint32_t ch)
 {
-    uint32_t pat = seq.pat, st = seq_pos[ch], f = seq.frac, nx = seq.run && f >= 128u;
+    uint32_t pat = seq.pat, st = seq_pos[ch], f = seq.frac, nx = seq.run && f >= 128u && !seq_nx_none;
     int32_t m = seq.run ? seq_frac_micro(f) : 0;
     seq_out(ch, seq_nr_vel);                    /* (not the sequencer's: not in the beat repeat's history) */
     if (nx) {                                   /* (as seq_peek saw it at the step: the pattern after, a part's loop) */
@@ -568,8 +684,18 @@ static void seq_block(void)                     /* DRUM_BLOCK_HOOK: every 16 fra
 }
 
 /* ---- the main loop side */
+static void seq_top(void)                       /* main: a chain back to its first entry, where PLAY and a DAW's START
+                                                 * begin it (not where it stopped: 2026-11-17, song mode step 2); stopped,
+                                                 * that pattern is the one playing (its kit follows). CONTINUE goes on */
+{
+    if (!seq_list_n()) return;
+    if (seq.list_cue >= seq_list_n()) seq.list_cue = 0;
+    seq.next = (uint8_t)(seq_list_l()[seq.list_cue].pat & (SEQ_NPAT - 1u));
+    if (!seq.run) seq.pat = seq.next;
+}
 static void seq_play(void)
 {
+    seq_top();                                  /* (the ISR's restart: next playing, the list at its top) */
     seq.restart = 1;
     seq.run = 1;
 }
@@ -577,22 +703,54 @@ static void seq_stop(void) { seq.run = 0; }
 
 static void seq_pattern(uint32_t p)
 {
-    seq.chain_n = 0;
+    seq.list = 0;                               /* (no list: the pattern asked for) */
     seq.next = (uint8_t)(p % SEQ_NPAT);
     if (!seq.run) seq.pat = seq.next;
 }
 
-static void seq_chain(const uint8_t *list, uint32_t n)
+static uint32_t seq_list_mutes(const seq_slot_t *l, uint32_t n)   /* SEQ_MUTES if an element has mutes */
 {
     uint32_t i;
-    if (n > SEQ_NCHAIN) n = SEQ_NCHAIN;
-    seq.chain_n = 0;
-    for (i = 0; i < n; i++) seq_chain_l[i] = list[i] % SEQ_NPAT;
-    if (n < 2u) { if (n) seq_pattern(list[0]); return; }
-    seq.chain_at = 0;
-    seq.next = seq_chain_l[0];
+    for (i = 0; i < n; i++) if ((l[i].pat & SEQ_EL) && l[i].mute) return SEQ_MUTES;
+    return 0;
+}
+static void seq_list_set(const seq_slot_t *s, uint32_t n, uint32_t stop, uint32_t first)   /* main: a new list, from
+                                                 * slot first (an element's: PLAY starts there too; the pattern playing goes
+                                                 * on to its end; if it is that slot's, it counts as it); stop: it stops at
+                                                 * its end, else it loops */
+{
+    uint32_t b = (seq.list >> 8 & 1u) ^ 1u, i;
+    if (n > SEQ_NSLOT) n = SEQ_NSLOT;
+    seq.list = 0;                               /* (no list while its place is set, as the chain before) */
+    if (!n) return;
+    for (i = 0; i < n; i++) seq_list[b][i] = s[i];
+    seq_list[b][0].pat |= SEQ_EL;
+    if (first >= n) first = 0;
+    seq.list_cue = (uint8_t)first;
+    seq.list_at = seq.list_el = (uint8_t)first;
+    seq.list_round = 0;
+    seq.next = (uint8_t)(s[first].pat & (SEQ_NPAT - 1u));
     if (!seq.run) seq.pat = seq.next;
-    seq.chain_n = (uint8_t)n;
+    seq.list = (uint16_t)(n | b << 8 | (stop ? SEQ_STOP : 0u) | seq_list_mutes(seq_list[b], n));
+}
+static void seq_list_keep(const seq_slot_t *s, uint32_t n, uint32_t stop)   /* main: the list edited while it plays: its
+                                                 * place kept by slot (past its end: its top), published in one write */
+{
+    uint32_t b = (seq.list >> 8 & 1u) ^ 1u, i;
+    if (!n || n > SEQ_NSLOT) return;
+    for (i = 0; i < n; i++) seq_list[b][i] = s[i];
+    seq_list[b][0].pat |= SEQ_EL;
+    if (seq.list_cue >= n || !(seq_list[b][seq.list_cue].pat & SEQ_EL)) seq.list_cue = 0;
+    seq.list = (uint16_t)(n | b << 8 | (stop ? SEQ_STOP : 0u) | seq_list_mutes(seq_list[b], n));
+}
+static void seq_chain(const uint8_t *list, uint32_t n)   /* main: a chain made by hand, one element for ever */
+{
+    seq_slot_t s[SEQ_NCHAIN];
+    uint32_t i;
+    if (n > SEQ_NCHAIN) n = SEQ_NCHAIN;
+    if (n < 2u) { if (n) seq_pattern(list[0]); return; }
+    for (i = 0; i < n; i++) { s[i].pat = (uint8_t)(list[i] % SEQ_NPAT); s[i].rep = 0; s[i].mute = 0; }
+    seq_list_set(s, n, 0, 0);
 }
 
 static void seq_rec(uint32_t ch, uint32_t vel)
@@ -600,8 +758,8 @@ static void seq_rec(uint32_t ch, uint32_t vel)
     uint32_t st, pat = seq.pat, f = seq.frac;   /* (main: the frac the last render ended on, where this hit is made) */
     ch %= DRUM_NCH;
     st = seq_pos[ch];
-    if (f >= 128u) {                            /* nearer the next step: that one (in the pattern after, a part's loop:
-                                                 * seq_peek's), and it must not sound again */
+    if (f >= 128u && !seq_nx_none) {            /* nearer the next step: that one (in the pattern after, a part's loop:
+                                                 * seq_peek's), and it must not sound again; none after: on this one */
         pat = seq_nx_pat;
         st = seq_nx_pos[ch];
         seq_skip[ch] = (uint8_t)(st + 1u);

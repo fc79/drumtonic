@@ -1,0 +1,8 @@
+# Drumtonic on the FM-1: after tests/flash/drumtonic_fm1_song_old.txt: the old record's settings load (130 BPM), the
+# songs are empty, SAVE dim. led N: 2 dim
+50 btn 8
+100 expect 130 bpm
+100 expect 0 songels 1
+100 expect 0 songels 8
+100 expect 2 led 9
+200 end

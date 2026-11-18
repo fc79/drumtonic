@@ -4,6 +4,7 @@
 # buttons: 3 SEL 8 HOME 10 ARP 11 SEQ 12 PLAY 13 REC; encoders: 0 SELECT 2-5 KNOB 1-4; LT: black 5 = key bit 13
 50 btn 8
 200 btn 8
+250 btn 8
 300 enc 0 1
 350 btn 3
 450 btn 8

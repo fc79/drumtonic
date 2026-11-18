@@ -1,0 +1,105 @@
+# Drumtonic on the FM-1: playing a song (song mode, step 8, 2026-11-18). Song 1: [P1] x2, [P2 P1], [P3], LOOP; P1 has
+# kit 2, P2 kit 1. On SONG, SEL on a row cues the song there (stopped: PLAY starts it; its first pattern's kit at once);
+# LIVE shows SONG 1, ROW n/3 and the row's count beside the pattern (its last pattern: the next row's, >P2); the kits
+# follow the rows; LOOP comes round to row 1. Playing, SEL on row 3 goes there as the pattern ends. A pattern picked by
+# hand on LIVE leaves the song. Song 2's tempo (knob 1 on SONG, 100) is set as it is cued; with END STOP it stops after
+# its last row. An empty song (3) with a chain made by hand: SEL on END makes the chain its first row.
+# Probes: songon (the song on, 0 none), row (its row), round, pat, kitcur, sbpm, bpm.
+# keys: white 1 = 0x1, 2 = 0x4, 3 = 0x10. buttons: 3 SEL 4 ENV 8 HOME 12 PLAY; encoders: 0 SELECT 1 ALGORITHM 2 KNOB 1
+# 6 PRESETS
+50 btn 8
+150 btn 4
+160 keys 0x4
+170 keys 0
+180 btn 8
+190 expect 2 patkit 0
+200 song 1 1x2 2,1x1 3x1
+300 btn 8
+310 expect 7 view
+400 btn 3
+410 expect 1 songon
+410 expect 1 row
+410 expect 0 pat
+410 expect 1 kitcur
+500 shot
+600 btn 8
+650 btn 8
+660 expect 0 view
+1000 btn 12
+1500 expect 0 pat
+1500 expect 1 row
+1500 expect 0 round
+1500 expect 2 whiteled 0
+1500 shot
+3500 expect 0 pat
+3500 expect 1 round
+4900 shot
+5500 expect 1 pat
+5500 expect 2 row
+5500 expect 0 kitcur
+7500 expect 0 pat
+7500 expect 2 row
+7500 expect 1 kitcur
+9500 expect 2 pat
+9500 expect 3 row
+11500 expect 0 pat
+11500 expect 1 row
+# playing, on SONG: SEL on row 3, there as the pattern (P1, from 11000) ends
+11600 btn 8
+11700 enc 0 2
+11800 btn 3
+12000 shot
+12900 expect 0 pat
+13500 expect 2 pat
+13500 expect 3 row
+# a pattern picked by hand on LIVE: the song left
+14000 btn 8
+14050 btn 8
+14060 expect 0 view
+14100 keys 0x4
+14150 keys 0
+14200 expect 0 songon
+15500 expect 1 pat
+16000 btn 12
+# song 2: its tempo set as it is cued; END STOP: it stops after its last row
+16100 song 2 1x1 2x1
+16200 btn 8
+16250 enc 6 1
+16260 expect 2 song
+16300 enc 2 -20
+16310 expect 100 sbpm
+16310 expect 120 bpm
+16350 enc 0 -5
+16400 btn 3
+16410 expect 2 songon
+16410 expect 100 bpm
+16500 enc 0 5
+16510 enc 1 1
+17000 btn 12
+17100 expect 1 run
+17500 expect 0 pat
+20000 expect 1 pat
+22000 expect 0 run
+22000 expect 2 songon
+# song 3, empty, and a chain made by hand on LIVE (P1 held, P2 and P3 tapped): SEL on END, the chain its first row
+22100 btn 8
+22150 btn 8
+22160 expect 0 view
+22200 keys 0x1
+22250 keys 0x5
+22300 keys 0x1
+22350 keys 0x11
+22400 keys 0x1
+22450 keys 0
+22460 expect 3 chain
+22460 expect 0 songon
+22500 btn 8
+22550 enc 6 1
+22560 expect 3 song
+22560 expect 1 songel
+22600 shot
+22700 btn 3
+22710 expect 1 songels 3
+22710 expect 3 sn
+22710 expect 2 spat 2
+23000 end

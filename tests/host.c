@@ -236,6 +236,13 @@ static uint32_t cpu_mhz(void) { return 360u; }
 /* "T expect V NAME [A B C D]": the app's state NAME (with its arguments) must be V at T. The app answers (host_probe:
  * 0 known, -1 not a name it knows); a run with a wrong one exits 1 */
 static int host_probe(const char *name, const int *a, int n, int *got);
+/* (the FM-1) "T list E E ...": a play list, as a song will make it (song mode): each E an element, its patterns 1..32
+ * joined by commas, then x and its times (x0: for ever), e.g. "list 1x2 1,2x2", and "stop" last for a list that
+ * stops at its end; "T list" alone: none; "T song N E E ... [stop]": song N (1..8) instead, an element's mutes as
+ * "m" and the channels after its times (1x4m1.5). host_list */
+static int host_list(const char *spec);
+static char host_lspec[64][256];
+static int host_ln;
 static char host_xname[4096][16];
 static int host_xarg[4096][5], host_xn, host_fails;
 
@@ -248,7 +255,7 @@ typedef struct { uint32_t t, keys; int btn; uint8_t st, d1, d2; int8_t enc, encn
  * P hit at velocity V, V 0 = let go), "T fader F V" (0..127), "T wheel W RAW" (0 pitch, 1 mod; raw ADC 0..1023),
  * "T xkey K V" (keybed key K 0..36 at V, 0 = let go: the outer keys 0..4, 32..36); any build: "T shot" (the screen
  * at T -> OUT-T.ppm) */
-enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_SHOT, HS_EXPECT, HS_BACKUP, HS_BK };
+enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_SHOT, HS_EXPECT, HS_BACKUP, HS_BK, HS_LIST };
 static const host_ev_t SCRIPT0[] = {
     {200, 1u << 7, -1, 0, 0, 0, -1, 0},                         /* C4 */
     {700, 1u << 7 | 1u << 11 | 1u << 14, -1, 0, 0, 0, -1, 0},   /* + E4 G4: a chord */
@@ -288,6 +295,13 @@ static void read_script(const char *path)
         else if (!strcmp(what, "wheel")) { sscanf(line, "%*u %*s %u %u", &a, &b); e.smk = HS_WHEEL; e.sa = (uint8_t)a; e.sb = (uint16_t)b; }
         else if (!strcmp(what, "xkey")) { sscanf(line, "%*u %*s %u %u", &a, &b); e.smk = HS_XKEY; e.sa = (uint8_t)a; e.sb = (uint16_t)b; }
         else if (!strcmp(what, "shot")) e.smk = HS_SHOT;   /* (any board: the screen now -> OUT-<ms>.ppm) */
+        else if ((!strcmp(what, "list") || !strcmp(what, "song")) && host_ln < 64) {   /* (the FM-1: host_list) */
+            const char *sp = strstr(line, what) + 4;
+            while (*sp == ' ') sp++;
+            snprintf(host_lspec[host_ln], sizeof host_lspec[0], "%s%s", what[0] == 's' ? "song " : "", sp);
+            host_lspec[host_ln][strcspn(host_lspec[host_ln], "\r\n#")] = 0;
+            e.smk = HS_LIST; e.sb = (uint16_t)host_ln++;
+        }
         else if (!strcmp(what, "backup")) e.smk = HS_BACKUP;   /* (the FM-1: a backup over MIDI, checked: host_backup) */
         else if (!strncmp(what, "bk", 2) && strlen(what) < 12u) {   /* (the restore's steps: host_bk) */
             char w2[16] = "";
@@ -581,6 +595,10 @@ static void platform_poll(void)                 /* one call = one millisecond */
         } else if (script[step].smk == HS_BACKUP) {
 #if !BOARD_SMK37
             host_backup();
+#endif
+        } else if (script[step].smk == HS_LIST) {
+#if !BOARD_SMK37
+            if (host_list(host_lspec[script[step].sb])) { printf("%6u ms  list %s: FAIL, not a list\n", fm1_ms, host_lspec[script[step].sb]); host_fails++; }
 #endif
         } else if (script[step].smk == HS_BK) {
 #if !BOARD_SMK37

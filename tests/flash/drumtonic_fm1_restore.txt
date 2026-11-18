@@ -2,6 +2,7 @@
 # question REPLACE ALL SAVES? over the opening, SETTINGS and the library (shots), HOME says no; data before yes refused;
 # 60 s without an answer is no; a record changed on the way fails it (state 4, the records after it untouched, no
 # restart); then a full restore: every area as the backup, the library (saved after the backup) emptied, a restart.
+# Song 2 is saved with two elements before the backup, with one after it: the restore brings back two.
 # tests/flash/drumtonic_fm1_restore2.txt, on the same HOST_FLASH, finds the backup's state loaded.
 # buttons: 3 SEL 6 EDIT 7 GLO 8 HOME 9 SAVE 12 PLAY; encoders: 0 SELECT 2 KNOB 1 (TEMPO on LIVE)
 30 backup
@@ -12,6 +13,7 @@
 110 expect 3 bkstate
 120 expect 0 ask
 200 btn 8
+210 btn 8
 250 expect 1 view
 300 bkbegin 0
 350 shot
@@ -31,6 +33,7 @@
 800 btn 8
 810 expect 3 bkstate
 900 btn 8
+950 song 2 1x2 2x1 stop
 1000 btn 9
 2000 expect 120 bpm
 2100 backup
@@ -49,8 +52,10 @@
 2910 bkhas 4 1
 3000 btn 8
 3100 enc 2 10
+3150 song 2 5x1
 3200 btn 9
 4000 expect 130 bpm
+4000 expect 1 songels 2
 4100 bkwrite 6
 4200 bkbegin 0
 4300 btn 8

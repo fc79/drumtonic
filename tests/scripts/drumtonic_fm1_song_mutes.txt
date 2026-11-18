@@ -1,0 +1,60 @@
+# Drumtonic on the FM-1: a song's rows with their mutes (song mode, step 10, 2026-11-18; docs/dev/SONG-MODE.md 11.2).
+# Song 1: [P1] OH muted, [P2] none, [P1] BD muted. As a row starts its mutes become the player's (from PLAY: the cued
+# row's); a row with none opens every channel; a mute by hand lasts to the next row; LOOP's top sets row 1's again.
+# On SONG a black key writes the row chosen's mute (its key dark when muted), heard at once if that row plays; on END,
+# nothing. A song with no mutes leaves the player's alone. Probes: mute (bit c: channel c), smute N (row N's), chhits.
+# keys: black 1 = 0x2, 2 = 0x8, 3 = 0x20. buttons: 3 SEL 8 HOME 12 PLAY; encoders: 0 SELECT 6 PRESETS
+50 btn 8
+100 song 1 1x1m5 2x1 1x1m1
+200 btn 8
+300 btn 3
+310 expect 0 mute
+400 btn 8
+450 btn 8
+460 expect 0 view
+1000 btn 12
+1100 expect 16 mute
+3100 expect 0 mute
+3500 keys 0x20
+3550 keys 0
+3600 expect 4 mute
+5100 expect 1 mute
+# BD muted through row 3: its hits do not move
+5100 expect 9 chhits 0
+6950 expect 9 chhits 0
+7100 expect 16 mute
+7500 btn 12
+# on SONG: row 1, black 1 (BD): written, its key dark; on END nothing
+7600 btn 8
+7610 expect 7 view
+7620 expect 1 songel
+7700 keys 0x2
+7750 keys 0
+7800 expect 17 smute 1
+7800 expect 0 blackled 0
+7800 expect 1 blackled 1
+7900 enc 0 5
+7950 keys 0x2
+7960 keys 0
+7970 expect 17 smute 1
+# row 2 cued and playing: black 2 (SD) written there, heard at once
+8000 enc 0 -2
+8010 expect 2 songel
+8100 btn 3
+8200 btn 12
+8300 expect 0 mute
+8400 keys 0x8
+8450 keys 0
+8500 expect 2 smute 2
+8500 expect 2 mute
+9000 btn 12
+# song 2, no mutes: the player's mutes stay
+9100 song 2 1x1 2x1
+9200 enc 6 1
+9250 enc 0 -5
+9300 btn 3
+9400 btn 12
+9500 expect 2 mute
+11500 expect 2 mute
+12000 btn 12
+12100 end

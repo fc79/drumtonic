@@ -1,0 +1,8 @@
+# Drumtonic on the FM-1: a settings' record of 8 bytes, as Drumtonic wrote it before the songs ("list oldset": the
+# settings alone, here at 130 BPM). tests/flash/drumtonic_fm1_song_old2.txt, on the same HOST_FLASH, loads it.
+# encoders: 2 KNOB 1 (TEMPO on LIVE)
+50 btn 8
+100 enc 2 10
+150 expect 130 bpm
+200 list oldset
+300 end

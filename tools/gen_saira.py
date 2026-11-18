@@ -32,7 +32,7 @@ SIZES = [("LB", "SairaCondensed-Medium.ttf", 16, 32, 126),
          ("BIG", "SairaCondensed-Bold.ttf", 56, 32, 95),
          ("HUGE", "SairaCondensed-Bold.ttf", 88, 32, 63),      # (two halves: one font's glyphs must stay under 64 KB)
          ("HUGEL", "SairaCondensed-Bold.ttf", 88, 64, 95)]
-KEEP = {"P": " -0123456789>ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+KEEP = {"P": " -/0123456789>ABCDEFGHIJKLMNOPQRSTUVWXYZ",   # (/: a song row's count on LIVE, 1/2)
         "BIG": " %&+-./0123456789:>ABCDEFGHIJKLMNOPQRSTUVWXYZ",
         "HUGE": " %&+-./0123456789:>",
         "HUGEL": "ABCDEFGHIJKLMNOPQRSTUVWXYZ"}   # the faces drawn with fewer characters than their range

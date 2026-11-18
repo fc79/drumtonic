@@ -60,6 +60,9 @@ controller.
   end of the bar.
 - **Where the pattern is**: on LIVE a bar across the screen fills up with the pattern, cut every 4 steps. It turns
   white while the next pattern waits.
+- **Songs**: 8 songs on HOME's second page, each a list of rows (a pattern or a chain, played 1-64 times, with its
+  own mutes), looping or stopping at the end, with its own tempo. Write them with the pattern keys, or press REC and
+  play: the song writes itself.
 - **Each pattern has its own kit**, effects included, and it loads as the pattern starts.
 - **Mute, solo, FILL, copy, paste, clear**, and **undo and redo** of the last change.
 
@@ -134,12 +137,12 @@ installed on the computer.
 
 ```sh
 python3 tools/fm1_install.py --info                            # what the FM-1 runs now
-python3 tools/fm1_install.py drumtonic-0.9.fwsc --yes          # the install
+python3 tools/fm1_install.py drumtonic-0.9.5.fwsc --yes          # the install
 ```
 
 The FM-1 then reports itself as `FM-1_987`, and the start-up screen shows the version.
 
-**Back up your saves.** The installer's **Backup** tab saves your kits, patterns, sound library and settings into
+**Back up your saves.** The installer's **Backup** tab saves your kits, patterns, songs, sound library and settings into
 one file, and puts a backup file back on the FM-1 (yours, or one a friend sent you; the FM-1 asks first). From the
 command line: `fm1_install.py --backup` and `--restore FILE`. See
 [the manual](docs/DRUMTONIC.md#backup-and-restore).
@@ -161,9 +164,9 @@ tools/get_toolchain.sh                      # JieLi's clang for the chip, to ~/.
 git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
     https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
 ./build.sh                                  # -> build/drumtonic.fwsc
-./build.sh --board fm1 --release 0.9        # -> build/drumtonic-0.9.fwsc, "0.9" on the screen
-web/emu/build.sh 0.9                        # the Try tab's emulator (Docker) -> build/emu/drumtonic-emu.wasm
-python3 tools/make_installer.py build/drumtonic-0.9.fwsc -o drumtonic-0.9-installer.html
+./build.sh --board fm1 --release 0.9.5        # -> build/drumtonic-0.9.5.fwsc, "0.9.5" on the screen
+web/emu/build.sh 0.9.5                        # the Try tab's emulator (Docker) -> build/emu/drumtonic-emu.wasm
+python3 tools/make_installer.py build/drumtonic-0.9.5.fwsc -o drumtonic-0.9.5-installer.html
 ```
 
 The last line writes the browser installer as a single HTML file with the package and the emulator inside. It
@@ -174,7 +177,7 @@ Without the instrument, the firmware also runs on a computer:
 
 ```sh
 tests/run_host.sh tests/scripts/drumtonic_fm1_tour.txt    # every page: screens as PNG, the sound as WAV (build/host/)
-tools/docs_screens.sh 0.9                                  # the screenshots on this page
+tools/docs_screens.sh 0.9.5                                  # the screenshots on this page
 tools/emu.sh                                               # this checkout's firmware in the browser's emulator
 ./build.sh && sh tests/run_tests.sh                        # the whole test suite
 ```

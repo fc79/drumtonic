@@ -47,7 +47,7 @@ answers NO and SEL answers YES, shown in large letters in the order the two butt
 
 ## The pages
 
-### HOME: LIVE and SETTINGS
+### HOME: LIVE, SONG and SETTINGS
 
 <p align="center">
 <img src="screens/live.png" width="240" alt="LIVE: the pattern, its kit, the meters">
@@ -72,8 +72,57 @@ answers NO and SEL answers YES, shown in large letters in the order the two butt
   Let go, and the pattern is where it would have been. Beat repeat changes nothing in the pattern, and leaving
   HOME or stopping ends it. HOME + a white key still picks a pattern.
 
-HOME again opens **SETTINGS**: CLOCK, REC, CLEAR PATTERN, FACTORY KITS, CPU (the load), VERSION, POWER. SELECT picks a
-row, SEL runs it. REC is GRID or FREE: how hits are recorded (see Playing by hand).
+HOME again opens **SONG** (below), and once more **SETTINGS**: CLOCK, REC, CLEAR PATTERN, FACTORY KITS, CPU (the
+load), VERSION, POWER. SELECT picks a row, SEL runs it. REC is GRID or FREE: how hits are recorded (see Playing by
+hand). From any other page, HOME opens LIVE.
+
+### SONG: songs
+
+<p align="center">
+<img src="screens/song.png" width="240" alt="SONG: a song's rows, row 1 playing, row 2 chosen">
+<img src="screens/live-song.png" width="240" alt="LIVE while a song plays: its row and count">
+</p>
+
+A **song** is a list of rows played one after the other. A row is a pattern or a chain (up to 16 patterns), played
+1 to 64 times, with its own mutes. A song holds up to 64 patterns in all its rows, ends by looping (LOOP) or stopping
+(STOP), and has its own tempo. There are 8 songs: PRESETS picks one.
+
+- **The list.** At the top the song, its tempo and the row chosen (`2 / 4`), with a strip of the rows, each as long
+  as it plays. Each row shows its patterns as small boxes (a chain longer than six goes on a second line; a pattern
+  with no steps is an empty box), its times (`x4`), and ten marks for its mutes in the black keys' order (a full
+  mark plays, a red line is muted). The last line is END, with LOOP or STOP.
+- **Writing a row.** SELECT picks a row. A white key makes it that pattern; hold a white key and tap others to make
+  it that chain, written when you let go of the first. Nothing starts playing. On END a white key adds a new row
+  (x1), and END stays chosen so you can add the next one straight away. OCT- / OCT+: patterns 1-16 / 17-32.
+- **Times and end.** ALGORITHM sets the row's times (x1-x64); on END it sets LOOP or STOP.
+- **Mutes.** A black key mutes or opens that channel in the row chosen (the bottom band says `OH MUTED` / `OH ON`,
+  and the black keys' lights show the row's mutes). When a row starts, its mutes become the ones you hear; you can
+  still change them by hand until the next row. A song where no row has mutes leaves your mutes as they are.
+- **Tempo.** Knob 1 sets the song's tempo. A song takes the tempo playing when it gets its first row.
+- **Copy, insert, delete.** GLO held copies the row chosen, GLO + SEL inserts the copy there, GLO + REC deletes the
+  row. On END, GLO + REC clears the whole song after **CLEAR SONG 2?** (SEL yes, HOME no).
+- **From a chain.** An empty song with a chain just made on LIVE says `SEL: FROM THE CHAIN`: SEL on END makes that
+  chain its first row.
+- `SONG FULL` says a song has its 64 patterns (a chain too long for what is left is cut there).
+
+**Playing a song.** On SONG, choose a row and press SEL: stopped, the song is ready from that row (its tempo and its
+first pattern's kit at once) and PLAY starts it; playing, the song goes there when the pattern playing ends. Each
+row's pattern brings its kit, as in a chain. LOOP comes round to row 1; STOP stops after the last row (STOP is also
+sent to MIDI). On LIVE, `SONG 1` and `ROW 2/4` are where the kit was, the row's count is beside the pattern
+(`2/4`), and on its last pattern the next row's pattern shows instead (`>P2`) with the bar white. While a song is on,
+TEMPO on LIVE is the song's tempo.
+
+**Leaving a song.** Pick a pattern by hand: a white key on LIVE (or a chain), or HOME + a white key from any page.
+It starts when the pattern playing ends, as usual, and the song stays as it is: SEL on a row plays it again. On the
+SONG page the white keys write, so leave from LIVE or with HOME.
+
+**Recording a song by playing it.** On SONG press REC (a song with rows asks **REPLACE SONG 2?** first). The bottom
+band turns red, `REC SONG 2`. Now the white keys launch patterns and chains and the black keys mute, as on LIVE, and
+the song writes itself as you play: each time a pattern or a chain goes round whole, its row's times go up; leave a
+chain halfway and the patterns played make a row of their own. Mutes are taken a pattern at a time: a mute changed in
+a pattern's last quarter counts from the next pattern (pressed just before the bar, it lands on the bar). You can go
+to LIVE and back while recording. REC or STOP ends it (so does opening another page, or a full song: the music goes
+on), and the song keeps the tempo playing.
 
 ### SEQ: STEPS
 
@@ -200,14 +249,14 @@ that is always on. It does nothing under -0.2 dBFS and stops every peak at the c
 | | |
 | --- | --- |
 | PLAY | play and stop |
-| REC | record: hits on white keys 1-10 (except on HOME) and knob moves |
-| SAVE | saves everything: the sound, the 16 kits and the 32 patterns, with QUANT written into the steps. It works while playing too; the sound goes on |
-| SEL | held: FILL. In a question: yes (HOME: no). In a list: run the row |
+| REC | record: hits on white keys 1-10 (except on LIVE and SONG) and knob moves; on SONG, record a song |
+| SAVE | saves everything: the sound, the 16 kits, the 32 patterns (with QUANT written into the steps) and the 8 songs. It works while playing too; the sound goes on |
+| SEL | held: FILL. In a question: yes (HOME: no). In a list: run the row (SONG: play from it) |
 | ARP | HOME: beat repeat. SEQ: note repeat. A step held: its ratchet |
 | MASTER | the volume |
-| GLO held | copy what the page shows: the step held, the channel's part on STEPS, its sound on SOUND, the LFO on LFO, otherwise the pattern |
+| GLO held | copy what the page shows: the step held, the channel's part on STEPS, its sound on SOUND, the LFO on LFO, the row on SONG, otherwise the pattern |
 | GLO + a key | paste there |
-| GLO + REC | clear; on MIX, erase the kit playing |
+| GLO + REC | clear; on MIX, erase the kit playing; on SONG, delete the row (on END, the song) |
 | GLO + a knob | remove that knob's motion and LFO |
 | HOME + a white key | pick a pattern from any page |
 | HOME + a black key | solo the channel |
@@ -218,14 +267,14 @@ that is always on. It does nothing under -0.2 dBFS and stops every peak at the c
 passes and plays back gliding from step to step. Turned without REC, the knob takes over for one pass.
 
 **Playing by hand.** On SEQ and EDIT a black key plays its channel while stopped; while playing, only with REC
-on, and then the hit is recorded. With REC on, the white keys 1-10 are the channels (except on HOME). The keys
+on, and then the hit is recorded. With REC on, the white keys 1-10 are the channels (except on LIVE and SONG). The keys
 have no velocity: a hit by hand plays at 100, and accents come from the steps. A hit goes on the nearest step;
 with SETTINGS > REC on FREE it also keeps how early or late it came, up to half a step, as that step's micro timing
 (over what the step had). The same goes for notes over MIDI and for note repeat.
 
 **Undo.** HOME + OCT- goes back to before the last change, and HOME + OCT+ goes forward again. It covers the
 patterns, motion, p-locks, conditions, micro timing, QUANT, LFOs, the sounds, the kit's sends and the effects. It does
-not cover the tempo, mute, solo, SETTINGS, or what is already saved. A change is one button press, a knob or an
+not cover the tempo, mute, solo, SETTINGS, the songs, or what is already saved. A change is one button press, a knob or an
 encoder until 1 s without a click, the keys until 2 s without a tap, or one REC pass. Undo is kept in memory
 until power-off.
 
@@ -249,11 +298,12 @@ what runs.
 ## What is kept
 
 SAVE writes the sound, its sends and effects, the 16 kits and the 32 patterns with their lanes and LFOs. The
-settings (kit, tempo, pattern, channel, clock) are saved with SAVE too, and nothing else is written by itself. A
+settings (kit, tempo, pattern, channel, clock) and the 8 songs are saved with SAVE too, and nothing else is written by
+itself. SAVE is lit while a song has changes. A
 kit is written as soon as you save it on MIX or erase it, and so is a library sound when you save or delete one;
 the sound goes on while they are written.
 
-These are the places the FM-1 firmwares share: the settings at 0xFC000, kits 1-8 and the patterns at
+These are the places the FM-1 firmwares share: the settings and the songs at 0xFC000, kits 1-8 and the patterns at
 0xF4000-0xF9FFF, the library at 0x97000 and 0x9B000, kits 9-16 at 0x9F000. An earlier Drumtonic still finds
 kits 1-8. **A save replaces what another FM-1 firmware kept there**, so back up first:
 [BACKUP.md](BACKUP.md).
@@ -262,8 +312,8 @@ Drumtonic reports itself as `FM-1_987`.
 
 ## Backup and restore
 
-A backup keeps everything SAVE writes in one small file (`.dtbak`, about 17 KB): the settings, the 16 kits, the 32
-patterns with their lanes and LFOs, and the sound library. It holds what was saved, not edits made since the last
+A backup keeps everything SAVE writes in one small file (`.dtbak`, about 19 KB): the settings and the songs, the 16
+kits, the 32 patterns with their lanes and LFOs, and the sound library. It holds what was saved, not edits made since the last
 SAVE. You can keep it on the computer, put it back later, or send it to someone else with an FM-1.
 
 **From the browser.** Open the installer page in Chrome or Edge, go to the **Backup** tab and connect the FM-1 over

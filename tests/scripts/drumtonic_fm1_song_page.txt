@@ -1,0 +1,56 @@
+# Drumtonic on the FM-1: the SONG page, read only (song mode, step 5, 2026-11-17). A tap on HOME goes LIVE, SONG,
+# SETTINGS, LIVE; from another page, LIVE. Song 1 is empty: EMPTY SONG and the END line, chosen. PRESETS picks the
+# song, SELECT the element (after the last: END). Song 2 is made with the host's "song" (as the user chose it on the
+# mockup: build/song-mode/song_page_chosen.png): P1 x4 with only BD and CH playing, P1 P1 P2 P3 x2 with OH muted, P5
+# x2, a chain of ten x1 with BD and CY muted (P4-P8 have no steps: hollow boxes). REC on SONG is the song's REC: on a
+# song with rows it asks first (step 12). Probes: view (7 SONG), song,
+# songel (the element chosen, its elements + 1: END), songels N (song N's elements).
+# buttons: 4 ENV 8 HOME 13 REC; encoders: 0 SELECT, 6 PRESETS
+50 btn 8
+100 song 2 1x4m2.3.5.6.7.8.9.10 1,1,2,3x2m5 5x2 1,2,1,4,6,6,7,8,2,3x1m1.10
+150 expect 4 songels 2
+150 expect 0 songels 1
+200 btn 8
+250 expect 7 view
+250 expect 1 song
+250 expect 1 songel
+300 shot
+400 enc 6 1
+450 expect 2 song
+450 expect 1 songel
+500 enc 0 1
+550 expect 2 songel
+600 shot
+700 enc 0 10
+750 expect 5 songel
+800 shot
+900 enc 0 -1
+1000 shot
+1100 enc 0 -10
+1150 expect 1 songel
+1200 enc 6 -3
+1250 expect 1 song
+1250 expect 1 songel
+1300 enc 6 1
+1400 btn 8
+1450 expect 1 view
+1500 btn 8
+1550 expect 0 view
+1600 btn 8
+1650 expect 7 view
+1650 expect 2 song
+# REC on SONG is the song's REC (step 12): song 2 has rows, so REPLACE SONG 2?; HOME says no, nothing changes
+1700 btn 13
+1750 expect 11 ask
+1800 btn 8
+1850 expect 0 ask
+1850 expect 0 srec
+1850 expect 4 songels 2
+1900 expect 7 view
+1950 expect 2 whiteled 0
+# from another page, HOME opens LIVE
+2100 btn 4
+2150 expect 2 view
+2200 btn 8
+2250 expect 0 view
+2300 end

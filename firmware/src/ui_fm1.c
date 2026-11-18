@@ -115,11 +115,14 @@ static void txc(int32_t xc, int32_t y, const felucca_font_t *f, const char *s, u
 }
 
 /* ---- the state */
-enum { V_LIVE, V_SET, V_MIX, V_STEPS, V_SOUND, V_LFO, V_FX, NVIEW };
-enum { CB_NONE, CB_PAT, CB_TRACK, CB_STEP, CB_SOUND, CB_LFO };
-enum { A_NONE, A_PASTE_PAT, A_PASTE_TRACK, A_CLEAR_PAT, A_CLEAR_TRACK, A_KIT_SAVE, A_FACTORY, A_LIB_SAVE, A_KIT_ERASE, A_RESTORE };
+enum { V_LIVE, V_SET, V_MIX, V_STEPS, V_SOUND, V_LFO, V_FX, V_SONG, NVIEW };   /* (V_SONG last: the numbers before it
+                                                 * are the tests' "view") */
+enum { CB_NONE, CB_PAT, CB_TRACK, CB_STEP, CB_SOUND, CB_LFO, CB_EL };
+enum { A_NONE, A_PASTE_PAT, A_PASTE_TRACK, A_CLEAR_PAT, A_CLEAR_TRACK, A_KIT_SAVE, A_FACTORY, A_LIB_SAVE, A_KIT_ERASE, A_RESTORE,
+       A_CLEAR_SONG, A_SONG_REC };
 static struct {
     uint8_t view, bank[NVIEW], spage, pbank, row, lfo_sel;
+    uint8_t song, el;                           /* SONG: the song shown (0..7), the element chosen (its elements: END) */
     uint32_t btn, btn_used, down_t[PANEL_NBTN], turn_t, keys;
     int8_t held;                                /* the step held, -1 none */
     uint8_t held_created, held_used, acc_hold, help, fill;
@@ -148,6 +151,9 @@ static struct {
     uint8_t big_grey;
     uint32_t guide_seen;                        /* the buttons whose guide showed in this press */
 } ui = {.held = -1, .chain_key = -1, .touched = -1};
+static int8_t song_on = -1;                     /* the song the play list is (cued with SEL, or playing), -1: none */
+static uint16_t song_list;                      /* (seq.list as the song published it: another one, the song was left) */
+static uint8_t song_bpm_wait;                   /* (a jump into it asked for while playing: its tempo as it is taken) */
 
 static void big(const char *a, const char *b, uint32_t grey);
 static void big_n(const char *a, const char *pre, int32_t n);
@@ -166,6 +172,7 @@ typedef struct { const char *name; pref_t k[4]; } bank_t;
 #define NOK {R_NONE, 0}
 static const bank_t BANK_LIVE[1] = {{"LIVE", {{R_TEMPO, 0}, {R_SWING, 0}, FXP(FX_M_RESO), FXP(FX_M_FILTER)}}};
 static const bank_t BANK_SET[1] = {{"SETTINGS", {NOK, NOK, NOK, NOK}}};
+static const bank_t BANK_SONG[1] = {{"SONG", {NOK, NOK, NOK, NOK}}};
 static const bank_t BANK_MIX[1] = {{"MIX", {PP(P_LEVEL), PP(P_REV), PP(P_DLY), PP(P_PAN)}}};   /* the channel chosen */
 static const bank_t BANK_STEPS[1] = {{"STEPS", {{R_RATE, 0}, {R_MICRO, 0}, {R_NREP, 0}, {R_QUANT, 0}}}};   /* (MICRO: the
                                                  * step held's; REPEAT: note repeat's rate, ARP; QUANT: the part's) */
@@ -193,7 +200,7 @@ static const bank_t BANK_FX[NFXB] = {
     {"COMP", {FXP(FX_M_THRESH), FXP(FX_M_RATIO), FXP(FX_M_ATTACK), FXP(FX_M_RELEASE)}}};
 static const struct { const bank_t *b; uint8_t n; const char *name; } VIEWS[NVIEW] = {
     {BANK_LIVE, 1, "LIVE"}, {BANK_SET, 1, "SETTINGS"}, {BANK_MIX, 1, "MIX"}, {BANK_STEPS, 1, "STEPS"},
-    {BANK_SOUND, NSOUND, "SOUND"}, {BANK_LFO, 1, "LFO"}, {BANK_FX, NFXB, "FX"}};
+    {BANK_SOUND, NSOUND, "SOUND"}, {BANK_LFO, 1, "LFO"}, {BANK_FX, NFXB, "FX"}, {BANK_SONG, 1, "SONG"}};
 static const bank_t *bank_now(void) { return &VIEWS[ui.view].b[ui.bank[ui.view] % VIEWS[ui.view].n]; }
 
 static uint32_t is_mode(uint32_t p) { return p == P_WAVE || p == P_PMODE || p == P_NFILT || p == P_NENV; }
@@ -447,6 +454,7 @@ static void pref_set(const pref_t *r, int32_t e)
         v = set.bpm + e;
         set.bpm = (uint8_t)(v < 40 ? 40 : v > 250 ? 250 : v);
         seq.bpm = set.bpm;
+        if (song_on >= 0) { arr[song_on].bpm = set.bpm; arr_dirty = 1; }   /* (a song on: it is the song's tempo) */
         fx_apply();                             /* (the delay's time follows) */
         return;
     case R_SWING:
@@ -697,6 +705,374 @@ static void ask(uint32_t act, uint32_t a, uint32_t b, const char *q)
 }
 static void ask_yes(void);
 static void bk_yes(void);                       /* (backup.c: YES to REPLACE ALL SAVES?) */
+static void kit_follow(void);                   /* (below: each pattern's kit; PLAY calls it too) */
+
+/* ---- SONG: writing a song (song mode step 6, docs/dev/SONG-MODE.md 10.3). The pattern keys do on the element chosen
+ * what they do on LIVE, without launching: a tap, that pattern; a key held and others tapped, that chain (written as
+ * the first is let go); on END, a new element x1 (END stays chosen: the next key adds another, the user, 2026-11-17).
+ * ALGORITHM: its times, on END LOOP / STOP; knob 1: the song's tempo; GLO held copies the element, GLO + SEL inserts
+ * the copy here, GLO + REC deletes it, on END the whole song after CLEAR SONG 2? (the user, 2026-11-17). Not in undo
+ * (the study, 4.5). 64 patterns a song: SONG FULL (a chain longer than what is left is cut there, and it says so) */
+static struct { arr_slot_t s[ARR_ELMAX]; uint8_t n; } song_clip;   /* GLO's copy of an element */
+static arr_t *song_now(void) { return &arr[ui.song % ARR_NSONG]; }
+static void song_sync(void);
+static void song_tempo_now(const arr_t *a);
+static void song_move(arr_slot_t *d, const arr_slot_t *src, uint32_t n)   /* (overlapping: the chip has no memmove) */
+{
+    uint32_t i;
+    if (d < src) for (i = 0; i < n; i++) d[i] = src[i];
+    else for (i = n; i-- > 0;) d[i] = src[i];
+}
+static void song_full(uint32_t cut)             /* SONG FULL (grey), and how many patterns did not go in */
+{
+    char s[10];
+    if (cut) { cat(catn(s, (int32_t)cut), " CUT"); big("SONG FULL", s, 1); }
+    else big("SONG", "FULL", 1);
+}
+static void song_put(uint32_t k, const arr_slot_t *e, uint32_t len, uint32_t insert)   /* element k (its elements: at
+                                                 * the end) becomes / gets before it len slots e (its first: times,
+                                                 * mutes); what does not fit is cut */
+{
+    arr_dirty = 1;
+    arr_t *a = song_now();
+    uint32_t nel = arr_nel(a), f = k < nel ? arr_first(a, k) : a->n, old = k < nel && !insert ? arr_len(a, k) : 0u, room, i;
+    room = ARR_NSLOT - (a->n - old);
+    if (!room) { song_full(0); return; }
+    if (len > room) { song_full(len - room); len = room; }
+    song_move(&a->s[f + len], &a->s[f + old], a->n - f - old);
+    for (i = 0; i < len; i++) {
+        a->s[f + i] = e[i];
+        if (i) { a->s[f + i].pat &= (uint8_t)~SEQ_EL; a->s[f + i].rep = 0; a->s[f + i].mute = 0; }
+    }
+    a->s[f].pat |= SEQ_EL;
+    a->n = (uint8_t)(a->n - old + len);
+    if (!a->bpm) a->bpm = set.bpm;              /* (a song's tempo: the one playing as it gets its first element) */
+    song_sync();
+}
+static void song_keys(const uint8_t *pl, uint32_t n)   /* the pattern keys' gesture: element chosen / a new one */
+{
+    arr_t *a = song_now();
+    arr_slot_t e[ARR_ELMAX];
+    uint32_t i, k = ui.el, nel = arr_nel(a);
+    if (n > ARR_ELMAX) n = ARR_ELMAX;
+    for (i = 0; i < n; i++) { e[i].pat = (uint8_t)(pl[i] % SEQ_NPAT); e[i].rep = 1; e[i].mute = 0; }
+    if (k < nel) { uint32_t f = arr_first(a, k); e[0].rep = a->s[f].rep; e[0].mute = a->s[f].mute; }
+    song_put(k, e, n, 0);
+    if (k >= nel) ui.el = (uint8_t)arr_nel(a);  /* (a new one: END stays chosen) */
+}
+static void song_times(int32_t d)               /* ALGORITHM: the element's times; on END, LOOP / STOP */
+{
+    arr_dirty = 1;
+    arr_t *a = song_now();
+    uint32_t nel = arr_nel(a);
+    if (ui.el >= nel) { a->end = d > 0 ? ARR_STOP : ARR_LOOP; song_sync(); return; }
+    {
+        arr_slot_t *e = &a->s[arr_first(a, ui.el)];
+        int32_t r = (int32_t)e->rep + d;
+        e->rep = (uint8_t)(r < 1 ? 1 : r > 64 ? 64 : r);
+    }
+    song_sync();
+}
+static void song_tempo(int32_t d)               /* knob 1: the song's tempo */
+{
+    arr_dirty = 1;
+    arr_t *a = song_now();
+    int32_t v = (int32_t)(a->bpm ? a->bpm : set.bpm) + d;
+    a->bpm = (uint8_t)(v < 40 ? 40 : v > 250 ? 250 : v);
+    if (song_on == (int8_t)ui.song) song_tempo_now(a);   /* (the song on: TEMPO is its tempo) */
+}
+static void song_copy(void)                     /* GLO held: the element chosen (END: nothing) */
+{
+    arr_t *a = song_now();
+    uint32_t f, i;
+    if (ui.el >= arr_nel(a)) { ui.copied[0] = 0; return; }
+    f = arr_first(a, ui.el);
+    song_clip.n = (uint8_t)arr_len(a, ui.el);
+    for (i = 0; i < song_clip.n; i++) song_clip.s[i] = a->s[f + i];
+    ui.clip_kind = CB_EL;
+    catn(cat(ui.copied, "COPIED ROW "), (int32_t)ui.el + 1);
+}
+static void song_insert(void)                   /* GLO + SEL: the copy, here (the elements from here move down) */
+{
+    arr_t *a = song_now();
+    uint32_t n0 = a->n;
+    if (ui.clip_kind != CB_EL || !song_clip.n) { big("NOTHING", "TO PASTE", 1); return; }
+    song_put(ui.el, song_clip.s, song_clip.n, 1);
+    if (a->n != n0) big_n("PASTE", "ROW ", (int32_t)ui.el + 1);
+}
+static void song_delete(void)                   /* GLO + REC: the element (the ones after it move up); on END the song */
+{
+    arr_dirty = 1;
+    arr_t *a = song_now();
+    uint32_t nel = arr_nel(a), f, len;
+    char q[20];
+    if (ui.el >= nel) {
+        if (!nel) { big("EMPTY", "SONG", 1); return; }
+        cat(catn(cat(q, "CLEAR SONG "), (int32_t)ui.song + 1), "?");
+        ask(A_CLEAR_SONG, ui.song, 0, q);
+        return;
+    }
+    f = arr_first(a, ui.el);
+    len = arr_len(a, ui.el);
+    song_move(&a->s[f], &a->s[f + len], a->n - f - len);
+    a->n = (uint8_t)(a->n - len);
+    big_n("DELETED", "ROW ", (int32_t)ui.el + 1);
+    if (ui.el > arr_nel(a)) ui.el = (uint8_t)arr_nel(a);
+    song_sync();
+}
+/* playing a song (song mode step 8): SEL on a row cues the song there (stopped: PLAY starts it there, its tempo now)
+ * or, playing, goes there as the pattern playing ends (its tempo then). A pattern or a chain picked by hand leaves it
+ * (another play list: song_tick). Its edits while it is on go into the play list, its place kept (song_sync) */
+static uint32_t song_slots(const arr_t *a, seq_slot_t *s)
+{
+    uint32_t i;
+    for (i = 0; i < a->n; i++) { s[i].pat = a->s[i].pat; s[i].rep = a->s[i].rep; s[i].mute = a->s[i].mute; }
+    return a->n;
+}
+static void song_tempo_now(const arr_t *a)      /* the song's tempo (on a DAW's clock: nothing) */
+{
+    if (!a->bpm || set.ext) return;
+    set.bpm = a->bpm;
+    seq.bpm = set.bpm;
+    fx_apply();
+}
+static void song_play_from(uint32_t k, uint32_t el)
+{
+    const arr_t *a = &arr[k % ARR_NSONG];
+    seq_slot_t s[ARR_NSLOT];
+    uint32_t n = song_slots(a, s), f = arr_first(a, el);
+    if (!n || f >= n) return;
+    if (!seq.run) {
+        seq_list_set(s, n, a->end == ARR_STOP, f);
+        song_tempo_now(a);
+        kit_follow();                           /* (its first pattern's kit now) */
+    } else {
+        if (song_on != (int8_t)k || seq.list != song_list) seq_list_set(s, n, a->end == ARR_STOP, f);
+        seq.jump_slot = (uint8_t)f;
+        seq.jump_req++;
+        song_bpm_wait = 1;
+    }
+    song_on = (int8_t)k;
+    song_list = seq.list;
+}
+static void song_sync(void)                     /* the song shown was edited: if it is on, the play list follows */
+{
+    const arr_t *a = song_now();
+    seq_slot_t s[ARR_NSLOT];
+    uint32_t n;
+    if (song_on != (int8_t)ui.song || seq.list != song_list) return;
+    n = song_slots(a, s);
+    if (!n) { song_on = -1; seq_pattern(seq.pat); return; }   /* (emptied: the pattern playing goes on alone) */
+    seq_list_keep(s, n, a->end == ARR_STOP);
+    song_list = seq.list;
+}
+static void song_tick(void)                     /* each loop: left? its tempo once a jump is taken; an element's mutes
+                                                 * the player's as it starts (the ISR's until then) */
+{
+    uint8_t g = seq_elm_gen;
+    if (g != seq.elm_ack) { seq.mute = seq_elm_mask; seq.elm_ack = g; }
+    if (song_on >= 0 && seq.list != song_list) { song_on = -1; song_bpm_wait = 0; }
+    if (song_bpm_wait && seq.jump_req == seq_jump_done) { song_bpm_wait = 0; if (song_on >= 0) song_tempo_now(&arr[song_on]); }
+}
+static uint32_t song_row(void)                  /* the row (element) the play list is on, 0..; its elements before it */
+{
+    const seq_slot_t *l = seq_list_l();
+    uint32_t i, r = 0;
+    for (i = 1; i <= seq.list_el && i < seq_list_n(); i++) r += (l[i].pat & SEQ_EL) != 0;
+    return r;
+}
+static void song_sel(void)                      /* SEL on SONG: play from the row; on END of an empty song with a chain
+                                                 * made by hand, the chain becomes its first row */
+{
+    arr_t *a = song_now();
+    uint32_t nel = arr_nel(a);
+    if (ui.el < nel) {
+        song_play_from(ui.song, ui.el);
+        big_n(seq.run ? "NEXT" : "FROM", "ROW ", (int32_t)ui.el + 1);
+        return;
+    }
+    if (!nel && song_on < 0 && seq_list_n() >= 2u) {
+        arr_slot_t e[ARR_ELMAX];
+        uint32_t i, n = seq_list_n() < ARR_ELMAX ? seq_list_n() : ARR_ELMAX;
+        for (i = 0; i < n; i++) { e[i].pat = (uint8_t)(seq_list_l()[i].pat & (SEQ_NPAT - 1u)); e[i].rep = 1; e[i].mute = 0; }
+        song_put(0, e, n, 0);
+        ui.el = 1;
+        big("FROM", "THE CHAIN", 0);
+        return;
+    }
+    say("SEL ON A ROW: PLAY FROM IT");
+}
+static void song_mute_key(uint32_t b)           /* a black key on SONG: the row chosen's mute; the state band says it
+                                                 * (OH MUTED / OH ON) so a mute is never written blind */
+{
+    arr_t *a = song_now();
+    arr_slot_t *e;
+    char s[16];
+    if (ui.el >= arr_nel(a) || b >= DRUM_NCH) return;
+    e = &a->s[arr_first(a, ui.el)];
+    e->mute ^= (uint16_t)(1u << b);
+    arr_dirty = 1;
+    if (song_on == (int8_t)ui.song && seq.list == song_list && seq_list_n() && song_row() == ui.el)   /* (it plays: now) */
+        seq.mute = (uint16_t)((seq.mute & ~(1u << b)) | (e->mute & (1u << b)));
+    song_sync();
+    cat(cat(s, kit.ch[b]), e->mute >> b & 1u ? " MUTED" : " ON");
+    say(s);
+}
+
+/* recording a song by playing it (song mode step 12, SONG-MODE.md 10.4 and 11.2). REC on SONG: the pattern keys launch
+ * and the black keys mute, as on LIVE, and what is heard is written. The ISR tells each pattern's start and its last
+ * quarter's mask (seq_ps). What was launched (a pattern, a chain: the "unit") is written as it plays: each time round
+ * whole with one mask, its times go up (at 64: a new row); a round whose mask changes inside is cut where it changes
+ * (the patterns before with the mask before, x1; the rest with the new one); a unit left mid-round leaves the patterns
+ * played as a row x1. Each pattern takes the mask that sounds as its last quarter begins (a mute pressed in it counts
+ * from the next pattern: the user, 2026-11-17). It ends with REC, STOP, SONG FULL (the music goes on) or a page other
+ * than LIVE and SONG; the song's tempo is then the one playing */
+static struct {
+    uint8_t on, song, ran;                      /* recording; into which song; PLAY seen */
+    uint8_t unit[ARR_ELMAX], un;                /* what was launched, its patterns (0: nothing yet) */
+    uint16_t ulist;                             /* (its seq.list: 0, a pattern alone) */
+    uint8_t base;                               /* the song's slots written for good */
+    uint8_t rep;                                /* the unit's whole rounds not yet written for good, with mask */
+    uint16_t mask;
+    uint8_t bp[ARR_ELMAX], bn;                  /* the round so far: its patterns, their masks */
+    uint16_t bm[ARR_ELMAX];
+    uint8_t cur, cur_j, cur_on;                 /* the pattern playing: which, its place in the unit, its mask */
+    uint16_t cur_m;
+} sr;
+static int sr_put(const uint8_t *p, uint32_t n, uint32_t rep, uint16_t mask)   /* a row at the song's end; -1 full */
+{
+    arr_t *a = &arr[sr.song];
+    uint32_t i;
+    if (!n) return 0;
+    if (a->n + n > ARR_NSLOT) return -1;
+    for (i = 0; i < n; i++) {
+        a->s[a->n + i].pat = (uint8_t)(p[i] | (i ? 0u : SEQ_EL));
+        a->s[a->n + i].rep = (uint8_t)(i ? 0u : rep);
+        a->s[a->n + i].mute = (uint16_t)(i ? 0u : mask);
+    }
+    a->n = (uint8_t)(a->n + n);
+    return 0;
+}
+static int sr_runs(const uint8_t *p, const uint16_t *m, uint32_t n)   /* patterns as rows x1, cut where the mask changes */
+{
+    uint32_t i = 0, k;
+    while (i < n) {
+        for (k = i + 1u; k < n && m[k] == m[i]; k++) {}
+        if (sr_put(p + i, k - i, 1u, m[i])) return -1;
+        i = k;
+    }
+    return 0;
+}
+static void sr_end(void);
+static int sr_commit(uint32_t round_too)        /* the rounds pending (and the round so far) written for good; -1 full */
+{
+    arr_t *a = &arr[sr.song];
+    a->n = sr.base;
+    if (sr.rep && sr_put(sr.unit, sr.un, sr.rep, sr.mask)) return -1;
+    sr.rep = 0;
+    if (round_too) {
+        if (sr_runs(sr.bp, sr.bm, sr.bn)) return -1;
+        sr.bn = 0;
+    }
+    sr.base = a->n;
+    return 0;
+}
+static void sr_show(void)                       /* the song as written so far, with what plays now (as it starts) */
+{
+    arr_t *a = &arr[sr.song];
+    uint8_t p[ARR_ELMAX];
+    uint16_t m[ARR_ELMAX];
+    uint32_t n = sr.bn, i, same = 1;
+    a->n = sr.base;
+    for (i = 0; i < n; i++) { p[i] = sr.bp[i]; m[i] = sr.bm[i]; }
+    if (sr.cur_on && n < ARR_ELMAX) { p[n] = sr.cur; m[n] = sr.cur_m; n++; }
+    for (i = 0; i < n; i++) same &= m[i] == sr.mask;
+    if (sr.rep && same && sr.rep < 64u && n) { (void)sr_put(sr.unit, sr.un, sr.rep + 1u, sr.mask); return; }   /* (the round
+                                                 * playing, counted as it will be) */
+    if (sr.rep) (void)sr_put(sr.unit, sr.un, sr.rep, sr.mask);
+    (void)sr_runs(p, m, n);
+}
+static int sr_done_pattern(void)                /* the pattern that played: into the round; a round whole: counted; -1 full */
+{
+    uint32_t i, same = 1;
+    if (!sr.cur_on) return 0;
+    sr.cur_on = 0;
+    if (sr.cur_j == 0u && sr.bn && sr_commit(1)) return -1;   /* (a round begun again before it was whole) */
+    if (sr.bn < ARR_ELMAX) { sr.bp[sr.bn] = sr.cur; sr.bm[sr.bn] = sr.cur_m; sr.bn++; }
+    if (sr.bn < sr.un) return 0;
+    for (i = 1; i < sr.bn; i++) same &= sr.bm[i] == sr.bm[0];
+    if (same && sr.rep && sr.mask == sr.bm[0] && sr.rep < 64u) sr.rep++;
+    else if (same) { if (sr_commit(0)) return -1; sr.rep = 1; sr.mask = sr.bm[0]; }
+    else return sr_commit(1);
+    sr.bn = 0;
+    return 0;
+}
+static void sr_full(void) { sr_end(); song_full(0); }   /* (SONG FULL: the recording ends, the music goes on) */
+static void sr_event(uint32_t v)
+{
+    if (v & 0x80000000u) {                      /* a pattern starts */
+        uint32_t pat = v & 31u, at = v >> 5 & 63u, list = v >> 12 & 0x7FFu, n = list & 0xFFu, i;
+        if (sr_done_pattern()) { sr_full(); return; }
+        if (n > ARR_ELMAX) n = 0, at = 0;       /* (a song's list, longer than a chain: its patterns one by one) */
+        if (!(n ? list == sr.ulist : !sr.ulist && sr.un == 1u && sr.unit[0] == pat)) {   /* something else launched */
+            if (sr_commit(1)) { sr_full(); return; }
+            sr.ulist = (uint16_t)(n ? list : 0u);
+            sr.un = (uint8_t)(n ? n : 1u);
+            if (n) for (i = 0; i < n; i++) sr.unit[i] = (uint8_t)(seq_list_l()[i].pat & (SEQ_NPAT - 1u));
+            else sr.unit[0] = (uint8_t)pat;
+        }
+        sr.cur = (uint8_t)pat;
+        sr.cur_j = (uint8_t)(n ? at : 0u);
+        sr.cur_m = (uint16_t)(seq.mute | (seq.solo ? ~seq.solo & ((1u << DRUM_NCH) - 1u) : 0u));   /* (until its last quarter) */
+        sr.cur_on = 1;
+    } else if (v & 0x40000000u) {
+        if (sr.cur_on) sr.cur_m = (uint16_t)(v & ((1u << DRUM_NCH) - 1u));
+    }
+    sr_show();
+}
+static void sr_start(void)                      /* REC on SONG (after REPLACE SONG n? if it has rows) */
+{
+    memset(&sr, 0, sizeof sr);
+    memset(&arr[ui.song % ARR_NSONG], 0, sizeof arr[0]);
+    sr.song = ui.song % ARR_NSONG;
+    sr.on = 1;
+    sr.ran = seq.run;
+    seq_ps_r = seq_ps_w;
+    seq_ps_on = 1;
+    if (song_on == (int8_t)sr.song) song_on = -1;   /* (what plays goes on, as a list of its own) */
+    arr_dirty = 1;
+    ui.el = 0;
+}
+static void sr_end(void)                        /* the pattern playing stays in the row it was in; the tempo playing */
+{
+    arr_t *a = &arr[sr.song];
+    if (!sr.on) return;
+    sr.on = 0;
+    seq_ps_on = 0;
+    if (sr_done_pattern() || sr_commit(1)) { a->n = sr.base; song_full(0); }
+    if (a->n) a->bpm = set.bpm;
+    arr_dirty = 1;
+    if (ui.el > arr_nel(a)) ui.el = (uint8_t)arr_nel(a);
+}
+static void sr_tick(void)                       /* each loop: the ISR's events; the ways it ends */
+{
+    if (!sr.on) return;
+    while (seq_ps_r != seq_ps_w && sr.on) { sr_event(seq_ps[seq_ps_r % SEQ_PS_N]); seq_ps_r++; }
+    if (!sr.on) return;
+    if (seq.run) sr.ran = 1;
+    if ((sr.ran && !seq.run) || (ui.view != V_LIVE && ui.view != V_SONG)) { sr_end(); say("REC SONG ENDED"); }
+}
+static void song_rec_key(void)                  /* REC on SONG: start (REPLACE SONG n? first if it has rows) / end */
+{
+    char q[24];
+    if (sr.on) { sr_end(); say("REC SONG ENDED"); return; }
+    if (arr_nel(song_now())) {
+        cat(catn(cat(q, "REPLACE SONG "), (int32_t)ui.song + 1), "?");
+        ask(A_SONG_REC, ui.song, 0, q);
+        return;
+    }
+    sr_start();
+}
 
 /* ---- the sound library: EDIT's last bank, a list. SELECT a row (ALGORITHM: 8 at a time), heard at once on the channel
  * chosen, in the pattern too (motion.c mot_prev) without changing it; SEL loads it there (with its name); GLO + SEL
@@ -717,7 +1093,8 @@ static void big(const char *a, const char *b, uint32_t grey)   /* what a gesture
     ui.big_grey = (uint8_t)grey;
     ui.touch_until = 0;
     ui.big_until = fm1_ms + 1000u;
-    if (ui.view == V_SET || lib_on()) {         /* (SETTINGS, the library: the list fills the screen; the state band says it) */
+    if (ui.view == V_SET || ui.view == V_SONG || lib_on()) {   /* (SETTINGS, SONG, the library: the list fills the
+                                                 * screen; the state band says it) */
         char s[24];
         cat(cat(cat(s, ui.big_l1), " "), ui.big_l2);
         say(s);
@@ -829,6 +1206,20 @@ static void enc_left(uint32_t e, int32_t n)
         lib_preview();
         return;
     }
+    if (ui.view == V_SONG) {                    /* SELECT: the element (after the last: END); PRESETS: the song */
+        const arr_t *a = &arr[ui.song % ARR_NSONG];
+        if (e == ENC_SELECT) {
+            int32_t r = (int32_t)ui.el + n, m = (int32_t)arr_nel(a);
+            ui.el = (uint8_t)(r < 0 ? 0 : r > m ? m : r);
+        } else if (e == ENC_ALGORITHM) {
+            song_times(n);
+        } else if (e == ENC_PRESETS) {
+            int32_t s = (int32_t)ui.song + (n > 0 ? 1 : -1);
+            ui.song = (uint8_t)(s < 0 ? 0 : s >= (int32_t)ARR_NSONG ? ARR_NSONG - 1u : (uint32_t)s);
+            if (ui.el > arr_nel(&arr[ui.song])) ui.el = (uint8_t)arr_nel(&arr[ui.song]);
+        }
+        return;
+    }
     if (e == ENC_SELECT) {
         if (ui.view == V_SET) { int32_t r = (int32_t)ui.row + n; ui.row = (uint8_t)(r < 0 ? 0 : r >= NROW ? NROW - 1 : r); }
         else if (ui.view == V_LFO) { int32_t r = (int32_t)ui.lfo_sel + n; ui.lfo_sel = (uint8_t)(r < 0 ? 0 : r >= (int32_t)NLFO ? NLFO - 1u : (uint32_t)r); }
@@ -893,6 +1284,7 @@ static void copy_now(void)
 {
     char s[32];
     uint32_t pat = cur_pat();
+    if (ui.view == V_SONG) { song_copy(); return; }
     ui.clip_pat = (uint8_t)pat; ui.clip_ch = set.ch;
     if (ui.view == V_LFO) {
         ui.clip_kind = CB_LFO; ui.clip_lfo = ui.lfo_sel;
@@ -973,6 +1365,7 @@ static void paste_black(uint32_t c)
 static void clear_now(void)                     /* GLO + REC */
 {
     uint32_t pat = cur_pat();
+    if (ui.view == V_SONG) { song_delete(); return; }   /* (songs: not in undo) */
     undo_begin("CLEAR");
     if (lib_on()) { lib_delete(); return; }
     if (ui.view == V_LFO) { lfo_clear(pat, ui.lfo_sel); big_n("CLEAR", "LFO ", ui.lfo_sel + 1); return; }
@@ -1003,6 +1396,15 @@ static void ask_yes(void)
     uint32_t pat = cur_pat(), a = ui.ask_a, b = ui.ask_b, k;
     uint8_t act = ui.ask;
     ui.ask = 0;
+    if (act == A_SONG_REC) { sr_start(); return; }   /* (REPLACE SONG n?: yes) */
+    if (act == A_CLEAR_SONG) {                  /* (songs: not in undo) */
+        memset(&arr[a % ARR_NSONG], 0, sizeof arr[0]);
+        arr_dirty = 1;
+        ui.el = 0;
+        song_sync();
+        big_n("CLEARED", "SONG ", (int32_t)a + 1);
+        return;
+    }
     undo_begin(act == A_PASTE_PAT || act == A_PASTE_TRACK ? "PASTE" : act == A_CLEAR_PAT || act == A_CLEAR_TRACK ? "CLEAR" : "EDIT");
     switch (act) {
     case A_PASTE_PAT: if (track_copy(a, DRUM_NCH, b, 0)) big("MOTION", "FULL", 1); else big_n("PASTE", "P", (int32_t)b + 1); break;
@@ -1053,7 +1455,8 @@ static void white_down(uint32_t w)
         if (w < BR_N) br_start(w, w);
         return;
     }
-    if (rec && ui.view != V_LIVE) {             /* REC: the channels on whites 1-10 (not on HOME: patterns there) */
+    if (rec && ui.view != V_LIVE && ui.view != V_SONG) {   /* REC: the channels on whites 1-10 (not on HOME's
+                                                 * pages, LIVE and SONG: patterns there) */
         if (w < DRUM_NCH) hit(w, 100, 0, 0);
         return;
     }
@@ -1067,6 +1470,21 @@ static void white_down(uint32_t w)
     if (ui.btn >> BTN_GLO & 1u) { ui.btn_used |= 1u << BTN_GLO; paste_white(w); return; }
     switch (ui.view) {
     case V_LIVE: pattern_key(w); break;
+    case V_SONG:                                /* the element chosen: a tap, a key held and others tapped (written as
+                                                 * the first is let go); song REC: they launch, as on LIVE */
+        if (sr.on) { pattern_key(w); break; }
+        if (ui.chain_key >= 0) {
+            char s[32], *q = cat(s, "CHAIN");
+            uint32_t i;
+            if (ui.chain_n < SEQ_NCHAIN) ui.chain[ui.chain_n++] = (uint8_t)(ui.pbank * 16u + w);
+            for (i = 0; i < ui.chain_n && i < 8u; i++) q = catn(cat(q, " "), ui.chain[i] + 1);
+            say(s);
+            break;
+        }
+        ui.chain_key = (int8_t)w;
+        ui.chain[0] = (uint8_t)(ui.pbank * 16u + w);
+        ui.chain_n = 1;
+        break;
     case V_MIX:
         if (w < NKIT) {
             char s[16];
@@ -1098,7 +1516,12 @@ static void white_down(uint32_t w)
 static void white_up(uint32_t w)
 {
     uint32_t pat = cur_pat(), st = ui.spage * 16u + w;
-    if (ui.view == V_LIVE && ui.chain_key == (int8_t)w) {
+    if (ui.view == V_SONG && ui.chain_key == (int8_t)w && !sr.on) {   /* SONG: the first key let go writes the element */
+        song_keys(ui.chain, ui.chain_n);
+        ui.chain_key = -1;
+        ui.chain_n = 0;
+    }
+    if ((ui.view == V_LIVE || (ui.view == V_SONG && sr.on)) && ui.chain_key == (int8_t)w) {
         if (ui.chain_n >= 2u) {
             char s[32], *p = cat(s, "CHAIN");
             uint32_t i;
@@ -1138,6 +1561,12 @@ static void black_down(uint32_t b)
         big("SOLO", seq.solo >> b & 1u ? kit.ch[b] : "OFF", 0);
         return;
     }
+    if (ui.view == V_SONG && !sr.on) {          /* SONG: the row chosen's mute (heard at once if it plays); on END
+                                                 * nothing (song mode step 10, 11.2); song REC: the player's, as LIVE */
+        song_mute_key(b);
+        return;
+    }
+    if (ui.view == V_SONG) { seq.mute ^= (uint16_t)(1u << b); return; }
     if (ui.view != V_LIVE) {                    /* off LIVE: the channel, heard when stopped; playing, only with REC
                                                  * (then recorded); on LIVE (HOME): its mute */
         if (b != set.ch) { set.ch = (uint8_t)b; ui.held = -1; }
@@ -1192,7 +1621,10 @@ static void btn_down(uint32_t i)
         if (ui.ask) return;
         ui.btn_used |= 1u << i;
         if (seq.ext) say("EXT CLOCK: THE DAW PLAYS");
-        else transport(!seq.run);
+        else {
+            if (!seq.run) { seq_top(); kit_follow(); }   /* (a chain's first pattern: its kit before its first hits) */
+            transport(!seq.run);
+        }
         return;
     }
     if (i == BTN_REC) {
@@ -1209,11 +1641,18 @@ static void btn_down(uint32_t i)
             return;
         }
         if (ui.btn >> BTN_GLO & 1u) { ui.btn_used |= 1u << BTN_GLO; clear_now(); return; }
+        if (ui.view == V_SONG || sr.on) { song_rec_key(); return; }   /* SONG: the song's REC (on LIVE too, to end it) */
         rec = !rec;
         return;
     }
     if (i == BTN_SEL) {
         if (ui.ask) { ui.btn_used |= 1u << i; ask_yes(); return; }
+        if (ui.view == V_SONG && (ui.btn >> BTN_GLO & 1u)) {   /* GLO + SEL: the copy, here */
+            ui.btn_used |= 1u << i | 1u << BTN_GLO;
+            song_insert();
+            return;
+        }
+        if (ui.view == V_SONG) { ui.btn_used |= 1u << i; song_sel(); return; }   /* SEL: play from the row (no FILL) */
         if (lib_on()) {
             ui.btn_used |= 1u << i;
             if (ui.btn >> BTN_GLO & 1u) { ui.btn_used |= 1u << BTN_GLO; lib_save(); }
@@ -1244,7 +1683,8 @@ static void btn_up(uint32_t i)
     }
     switch (i) {
     case BTN_HOME:
-        ui.view = ui.view == V_LIVE ? V_SET : V_LIVE; ui.held = -1;
+        ui.view = ui.view == V_LIVE ? V_SONG : ui.view == V_SONG ? V_SET : V_LIVE; ui.held = -1;   /* LIVE, SONG,
+                                                 * SETTINGS (2026-11-17); from another page: LIVE */
         break;
     case BTN_ENV: open_view(V_MIX); break;
     case BTN_SEQ: open_view(V_STEPS); break;
@@ -1264,7 +1704,7 @@ static void btn_up(uint32_t i)
         break;
     case BTN_OCT_DOWN: case BTN_OCT_UP: {
         int32_t d = i == BTN_OCT_UP ? 1 : -1;
-        if (ui.view == V_LIVE) ui.pbank = (uint8_t)(d > 0 ? 1 : 0);
+        if (ui.view == V_LIVE || ui.view == V_SONG) ui.pbank = (uint8_t)(d > 0 ? 1 : 0);
         else if (ui.view == V_SOUND || ui.view == V_FX) {   /* EDIT, FX: the bank before / after (steps' page: on SEQ) */
             uint32_t nb = VIEWS[ui.view].n;
             ui.bank[ui.view] = (uint8_t)((ui.bank[ui.view] + nb + (uint32_t)d) % nb);
@@ -1321,8 +1761,7 @@ static void kit_follow(void)                    /* each loop, before the input *
         kit_switch(want - 1u);
         kit_changed();
     }
-    up = seq.next;                              /* the pattern after this one: staged for the ISR */
-    if (seq.chain_n >= 2u && seq.next == pat) up = seq_chain_l[(seq.chain_at + 1u) % seq.chain_n];
+    up = seq_after(pat).pat;                    /* the pattern after this one: staged for the ISR */
     want = seq.run && up != pat ? seq_song.p[up % SEQ_NPAT].kit : 0u;
     if (kit_swaps != kit_swaps_seen) return;    /* (a swap not taken over yet: the stage is the ISR's) */
     if (!want || want - 1u == kit_cur) { kit_stage_pat = 0xFFu; return; }
@@ -1340,6 +1779,8 @@ static void ui_input(void)
     uint32_t rel, b = fm1_input_edges(&rel), keys = fm1_in.notes, kp, kr, i, n1 = 0, first = 0, ev;
     int32_t n;
     kit_follow();                               /* (each pattern's kit: before the input, so kit_cur is right) */
+    song_tick();
+    sr_tick();
     kp = fm1_input_note_edges() | (keys & ~ui.keys);
     kr = (ui.keys & ~keys) | (kp & ~keys);      /* (a tap quicker than a loop: down and up now) */
     ui.keys = keys;
@@ -1371,6 +1812,11 @@ static void ui_input(void)
                 enc_left(i, n);
             } else {
                 const pref_t *r = &bank_now()->k[(i - ENC_KNOB1) & 3u];
+                if (ui.view == V_SONG) {        /* SONG: knob 1 the song's tempo (one a click, as TEMPO), the others
+                                                 * nothing; not in undo */
+                    if (i == ENC_KNOB1 && !ui.ask) song_tempo(n);
+                    continue;
+                }
                 undo_event(UK_KNOB + i, 1000u, r->kind == R_NONE ? "EDIT" : pref_name(r));
                 knob_turn(i - ENC_KNOB1, n);
             }
@@ -1407,7 +1853,8 @@ static char *cat_v(char *p, uint32_t mv, uint32_t two)   /* 1260: "1.26"; 3200, 
     if (c < 10u) p = cat(p, "0");
     return catn(p, (int32_t)c);
 }
-static uint32_t list_view(void) { return ui.view == V_SET || lib_on(); }   /* SETTINGS, the library: no knobs */
+static uint32_t list_view(void) { return ui.view == V_SET || ui.view == V_SONG || lib_on(); }   /* SETTINGS, SONG, the
+                                                 * library: no knobs */
 static int32_t guide_btn(void)                  /* a button held alone for 250 ms, no knob turned since: its guide over the
                                                  * page; -1 none (SEL, PLAY, REC: none, they act as they are held / pressed) */
 {
@@ -1468,6 +1915,11 @@ static uint32_t guide_rows(uint32_t b, grow_t *r)   /* with the button held, her
     }
     }
     if (lib_on()) { r[n++] = (grow_t){"SEL", "SAVE"}; r[n++] = (grow_t){"REC", "DELETE"}; return n; }
+    if (ui.view == V_SONG) {                    /* GLO on SONG: the element's copy, insert, delete; on END the song */
+        if (ui.el >= arr_nel(song_now())) { r[n++] = (grow_t){"SEL", "INSERT"}; r[n++] = (grow_t){"REC", "CLEAR SONG"}; }
+        else { r[n++] = (grow_t){"SEL", "INSERT"}; r[n++] = (grow_t){"REC", "DELETE ROW"}; }
+        return n;
+    }
     if (ui.view == V_LFO) {
         r[n++] = (grow_t){"WHITE", "PASTE"}; r[n++] = (grow_t){"REC", "CLEAR"}; r[n++] = (grow_t){"KNOB", "LFO OFF"};
     } else if ((ui.view == V_STEPS || ui.view == V_SOUND) && one_ch() && ui.held >= 0) {
@@ -1542,6 +1994,112 @@ static void draw_set(void)
             tx(12, y + 5, &FONT_SB, "POWER", B_SEC, B_BOX);
             txr(228, y + 5, &FONT_SB, s, B_SEC, B_BOX);
         }
+        cv_oy = 0;
+        cv_blit(0, half * LIST_STRIP);
+    }
+}
+/* SONG (HOME's second page): the song's list over both bands, as the user chose it (docs/dev/SONG-MODE.md 10.5, 11.1;
+ * build/song-mode/song_page_chosen.png): a header (the song, its tempo, the element chosen of how many, a strip of its
+ * elements as long as each lasts), then an element a box: its number, its patterns as boxes of 22 x 20, six a line
+ * (a longer chain wraps), its times, and ten cells for its mutes (full: plays; a red line: muted); then END and LOOP /
+ * STOP. The element chosen is always whole; the one after the last whole one may be cut by the state band */
+#define SONG_TOP 34                             /* (the first element's top; the list ends at 212) */
+static int32_t song_el_h(const arr_t *a, uint32_t k)   /* an element's box (END: one line, no cells) */
+{
+    uint32_t n = arr_nel(a);
+    return k >= n ? 28 : 4 + (int32_t)((arr_len(a, k) + 5u) / 6u) * 24 + 9;
+}
+static void song_end_line(const arr_t *a, int32_t y, uint32_t on)
+{
+    uint16_t bg = on ? B_ACT : B_BOX, c = on ? B_TXT : B_SEC;
+    box(2, y, 236, 28, bg);
+    tx(34, y + 5, &FONT_SB, "END", c, bg);
+    txr(228, y + 5, &FONT_SB, a->end == ARR_STOP ? "STOP" : "LOOP", c, bg);
+}
+static void draw_song(void)
+{
+    const arr_t *a = &arr[ui.song % ARR_NSONG];
+    uint32_t n = arr_nel(a), sel = ui.el > n ? n : ui.el, k, half, tot = 0, top;
+    int32_t pk = -1, pat_at = 0;                /* the row playing (cued, stopped), its pattern playing */
+    char s[24];
+    if (song_on == (int8_t)ui.song && seq_list_n() && seq.list == song_list) {
+        pk = (int32_t)song_row();
+        pat_at = (int32_t)seq.list_at - (int32_t)seq.list_el;
+    }
+    for (k = 0; k < n; k++) tot += arr_len(a, k) * a->s[arr_first(a, k)].rep;
+    top = sel < 2u ? 0u : sel - 2u;             /* (two elements above the one chosen, if it then fits whole) */
+    for (;;) {
+        int32_t y = SONG_TOP;
+        for (k = top; k <= sel; k++) y += song_el_h(a, k) + 2;
+        if (y - 2 <= 212 || top == sel) break;
+        top++;
+    }
+    for (;;) {                                  /* (near the end: more above rather than empty space below) */
+        int32_t y = SONG_TOP;
+        if (!top) break;
+        for (k = top - 1u; k <= n; k++) y += song_el_h(a, k) + 2;
+        if (y - 2 > 212) break;
+        top--;
+    }
+    for (half = 0; half < 2u; half++) {         /* two strips */
+        cv_begin(240, LIST_STRIP, B_BG);
+        cv_oy = -(int32_t)(half * LIST_STRIP);
+        catn(cat(s, "SONG "), (int32_t)ui.song + 1);
+        tx(8, 4, &FONT_SB, s, B_TXT, B_BG);
+        cat(catn(s, a->bpm ? a->bpm : seq.bpm), " BPM");
+        tx(84, 6, &FONT_LB, s, B_SEC, B_BG);
+        if (sel < n) catn(cat(catn(s, (int32_t)sel + 1), " / "), (int32_t)n);
+        else cat(catn(s, (int32_t)n), " ROWS");
+        txr(232, 6, &FONT_LB, s, B_SEC, B_BG);
+        if (tot) {                              /* the strip: each element as long as it lasts, the one chosen white */
+            uint32_t x = 0;
+            for (k = 0; k < n; k++) {
+                uint32_t w = arr_len(a, k) * a->s[arr_first(a, k)].rep, x0 = 6u + x * 228u / tot, x1 = 6u + (x + w) * 228u / tot;
+                cv_rect((int32_t)x0, 25, x1 - x0 > 3u ? (int32_t)(x1 - x0) - 1 : 2, 4, k == sel ? B_TXT : (int32_t)k == pk ? B_SEC : B_EMPTY);
+                x += w;
+            }
+        }
+        if (!n) {                               /* empty: what it is and how to fill it, then END (chosen) */
+            txc(120, 66, &FONT_SB, "EMPTY SONG", B_SEC, B_BG);
+            txc(120, 91, &FONT_LB, song_on < 0 && seq_list_n() >= 2u ? "SEL: FROM THE CHAIN" : "PRESS A PATTERN KEY", B_SEC, B_BG);
+            song_end_line(a, 124, 1);
+        } else {
+            int32_t y = SONG_TOP;
+            for (k = top; k <= n; k++) {
+                int32_t h = song_el_h(a, k);
+                uint32_t on = k == sel;
+                if (y > 196 || (on && y + h > 214)) break;
+                if (k == n) { song_end_line(a, y, on); break; }
+                {
+                    uint32_t f = arr_first(a, k), len = arr_len(a, k), i, c;
+                    uint16_t bg = on ? B_ACT : B_BOX;
+                    const arr_slot_t *e = &a->s[f];
+                    box(2, y, 236, h, bg);
+                    catn(s, (int32_t)k + 1);
+                    txr(26, y + 7, &FONT_LB, s, on ? B_TXT : B_SEC, bg);
+                    for (i = 0; i < len; i++) {   /* its patterns: a box each; one with no steps, hollow */
+                        uint32_t p = arr_pat(a, f + i);
+                        int32_t bx = 34 + (int32_t)(i % 6u) * 24, by = y + 4 + (int32_t)(i / 6u) * 24;
+                        uint16_t fill = on ? B_BEAT : B_ACT, ink = on ? B_TXT : B_SEC;
+                        if ((int32_t)k == pk && (int32_t)i == pat_at) { box(bx, by, 22, 20, B_TXT); fill = B_TXT; ink = B_INK; }   /* (playing) */
+                        else if (pat_used(p)) box(bx, by, 22, 20, fill);
+                        else { box(bx, by, 22, 20, B_SEC); box(bx + 1, by + 1, 20, 18, bg); fill = bg; }
+                        catn(s, (int32_t)p + 1);
+                        txc(bx + 11, by + 3, &FONT_LB, s, ink, fill);
+                    }
+                    if ((int32_t)k == pk) cat(catn(cat(catn(s, (int32_t)seq.list_round + 1), "/"), e->rep), "");   /* (its count) */
+                    else cat(catn(cat(s, "x"), e->rep), "");
+                    txr(228, y + 5, &FONT_SB, s, on || (int32_t)k == pk ? B_TXT : B_SEC, bg);
+                    for (c = 0; c < DRUM_NCH; c++) {   /* its mutes: ten cells in the black keys' order */
+                        int32_t cx = 34 + (int32_t)c * 18, cy = y + 2 + (int32_t)((len + 5u) / 6u) * 24;
+                        if (e->mute >> c & 1u) cv_rect(cx, cy + 3, 16, 2, B_REC);
+                        else cv_rect(cx, cy, 16, 5, B_SEC);
+                    }
+                }
+                y += h + 2;
+            }
+        }
+        cv_rect(0, 212, 240, 4, B_BG);
         cv_oy = 0;
         cv_blit(0, half * LIST_STRIP);
     }
@@ -1761,7 +2319,7 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
 {
     uint32_t c, k, pat = cur_pat();
     char s[40];
-    if (list_full()) { if (ui.view == V_SET) draw_set(); else draw_lib(); return; }
+    if (list_full()) { if (ui.view == V_SET) draw_set(); else if (ui.view == V_SONG) draw_song(); else draw_lib(); return; }
     cv_begin(240, MID_H, B_BG);
     if ((c = (uint32_t)guide_btn()) != ~0u) {   /* a button held: its guide */
         draw_guide(c);
@@ -1775,7 +2333,16 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
 #define LIVE_BW 228
         catn(cat(s, "P"), (int32_t)seq.pat + 1);
         tx(6, -4, &FONT_P, s, B_TXT, B_BG);
-        if (seq.next != seq.pat) {              /* the next one, grey, steady (2026-11-12: it blinked) */
+        if (song_on >= 0 && seq_list_n()) {     /* a song (mockup A, the user's choice): the row's count beside the
+                                                 * pattern, its last pattern's next row's pattern instead (2026-11-18) */
+            seq_after_t a = seq_after(seq.pat);
+            const seq_slot_t *l = seq_list_l();
+            int32_t x = 6 + text_w(&FONT_P, s) + 12;
+            if (a.el != seq.list_el || a.jump) catn(cat(s, ">P"), (int32_t)a.pat + 1);
+            else if (a.none) s[0] = 0;
+            else cat(catn(cat(catn(s, (int32_t)seq.list_round + 1), "/"), l[seq.list_el].rep), "");
+            if (s[0]) tx(x, -4, &FONT_P, s, B_SEC, B_BG);
+        } else if (seq.next != seq.pat) {       /* the next one, grey, steady (2026-11-12: it blinked) */
             catn(cat(s, ">P"), (int32_t)seq.next + 1);
             tx(76, -4, &FONT_P, s, B_SEC, B_BG);
         }
@@ -1785,6 +2352,10 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
                                                  * under it) */
             uint32_t len = pat_len(seq.pat) ? pat_len(seq.pat) : 16u, st = seq.step + 1u < len ? seq.step + 1u : len, q;
             uint16_t col = seq.next != seq.pat ? B_TXT : B_SEC;
+            if (song_on >= 0 && seq_list_n()) {  /* (a song: white on its row's last pattern) */
+                seq_after_t a = seq_after(seq.pat);
+                col = a.el != seq.list_el || a.jump || a.none ? B_TXT : B_SEC;
+            }
             box(LIVE_BX, 47, LIVE_BW, 4, B_BOX);
             cv_rect(LIVE_BX, 47, (int32_t)((uint32_t)LIVE_BW * st / len), 4, col);
             for (q = 4; q < len; q += 4)        /* (cut every 4 steps, wider every 16: the user's choice of two, 2026-11-13) */
@@ -1793,7 +2364,12 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
         if (chain_making()) {                   /* (the second key held on: how the chain is growing, below) */
             cat(catn(cat(s, "CHAIN "), (int32_t)ui.chain_n), "/16");
             txr(236, 8, &FONT_SB, s, B_TXT, B_BG);
-        } else if (seq.chain_n < 2u) {          /* the pattern's kit, 38 px, white (read standing; * edits not saved);
+        } else if (song_on >= 0 && seq_list_n()) {   /* a song: which, and its row of how many (the kit: the band) */
+            catn(cat(s, "SONG "), song_on + 1);
+            txr(234, -1, &FONT_LB, s, B_SEC, B_BG);
+            catn(cat(catn(cat(s, "ROW "), (int32_t)song_row() + 1), "/"), (int32_t)arr_nel(&arr[song_on]));
+            txr(234, 18, &FONT_V20, s, B_TXT, B_BG);
+        } else if (seq_list_n() < 2u) {         /* the pattern's kit, 38 px, white (read standing; * edits not saved);
                                                  * a next pattern with another kit: that one, grey, instead (2026-11-12);
                                                  * with a chain: the chain there, the state band says the kit */
             uint32_t nk = seq_song.p[seq.next % SEQ_NPAT].kit;
@@ -1807,11 +2383,13 @@ static void draw_mid(uint32_t meters_only)      /* meters_only: send just the me
             }
         } else {                                /* the chain from the one playing: 3 of it, that one lit */
             tx(170, -2, &FONT_LB, "CHAIN", B_SEC, B_BG);
-            for (k = 0; k < 3u && k < seq.chain_n; k++) {
-                uint32_t i = (seq.chain_at + k) % seq.chain_n, on = k == 0u;
+            const seq_slot_t *l = seq_list_l();
+            uint32_t n = seq_list_n(), at = seq.list_at;
+            for (k = 0; k < 3u && k < n; k++) {
+                uint32_t i = (at + k) % n, on = k == 0u;
                 int32_t x = 170 + (int32_t)k * 23;
                 box(x, 18, 20, 20, on ? B_TXT : B_BOX);
-                catn(s, (int32_t)seq_chain_l[i] + 1);
+                catn(s, (int32_t)(l[i].pat & (SEQ_NPAT - 1u)) + 1);
                 txc(x + 10, 17, &FONT_LB, s, on ? B_INK : B_SEC, on ? B_TXT : B_BOX);
             }
         }
@@ -1945,12 +2523,26 @@ static uint32_t mid_hash(uint32_t meters)      /* meters: the hits' meters too (
         break;
     case V_LIVE:
         h = hsh(h, seq.next * 64u + (seq.run ? seq.step + 1u : 0u));   /* (where the pattern is: its bar) */
-        h = hsh(h, seq.chain_n * 32u + seq.chain_at);
+        h = hsh(h, seq_list_n() * 64u + seq.list_at);
+        if (song_on >= 0) {                     /* (a song: its row, its count, its next) */
+            seq_after_t a = seq_after(seq.pat);
+            h = hsh(h, (uint32_t)song_on << 24 | (uint32_t)seq.list_el << 16 | (uint32_t)seq.list_round << 8 | a.pat);
+            h = hsh(h, a.el * 4u + a.jump * 2u + a.none);
+        }
         h = hsh(h, chain_making() ? ui.chain_n : 0u);
         for (k = 0; chain_making() && k < ui.chain_n; k++) h = hsh(h, ui.chain[k]);
         if (meters) for (c = 0; c < DRUM_NCH; c++) h = hsh(h, meter(c) / 6u);
         break;
     case V_SET: h = hsh(h, ui.row * 16u + set.ext * 4u + set.rec_free * 2u); h = hsh(h, ui.cpu * 4u + cpu_cores()); break;
+    case V_SONG: {                              /* the song shown, its element chosen, its slots, the patterns' steps */
+        const arr_t *a = &arr[ui.song % ARR_NSONG];
+        h = hsh(h, ui.song * 256u + ui.el); h = hsh(h, a->n * 4u + a->end); h = hsh(h, a->bpm ? a->bpm : seq.bpm);
+        h = hsh(h, (uint32_t)(song_on + 1) << 24 | (uint32_t)seq.list_at << 16 | (uint32_t)seq.list_el << 8 | seq.list_round);
+        h = hsh(h, seq_list_n() * 2u + seq.run);
+        for (c = 0; c < a->n; c++) h = hsh(h, (uint32_t)a->s[c].pat << 24 | (uint32_t)a->s[c].rep << 16 | a->s[c].mute);
+        for (c = 0; c < SEQ_NPAT; c++) h = hsh(h, pat_used(c) != 0);
+        break;
+    }
     case V_SOUND:
         h = hsh(h, ui.lib_row); h = hsh(h, (uint32_t)lib_user.used); h = hsh(h, (uint32_t)(lib_user.used >> 32));
         h = hsh(h, (uint32_t)kit.ch[set.ch % DRUM_NCH][0] << 8 | kit.ch[set.ch % DRUM_NCH][1]);
@@ -1986,7 +2578,7 @@ static uint8_t bot_drop, bot_ok;                /* (the band's right side: what 
 static void draw_bot(void)                      /* the state band */
 {
     uint32_t pat = cur_pat(), o = orig_len(pat, len_ch());
-    uint16_t band = rec ? B_REC : chc(set.ch);
+    uint16_t band = rec || sr.on ? B_REC : chc(set.ch);
     char l[40], r[32], *p;
     int32_t x;
     l[0] = r[0] = 0;
@@ -1999,13 +2591,14 @@ static void draw_bot(void)                      /* the state band */
         if (mot_get(pat, set.ch, P_RATCH, (uint32_t)ui.held) != MOT_NONE)
             { while (*p) p++; catn(cat(p, "  X"), (int32_t)ratch_of(mot_get(pat, set.ch, P_RATCH, (uint32_t)ui.held))); }
     }
+    else if (sr.on) catn(cat(l, "REC SONG "), sr.song + 1);   /* (song REC: red, on LIVE too) */
     else if (ui.fill) cat(l, rec ? "REC FILL" : "FILL");
     else if (one_ch()) cat(cat(catn(l, (int32_t)set.ch + 1), " "), kit.ch[set.ch]);
     else cat(l, "ALL");
     cv_begin(240, BOT_H, B_BG);
     box(0, 0, 240, BOT_H, band);
     x = tx(6, BOT_TY, &FONT_ST, l, B_INK, band);
-    if (fm1_ms >= msg_until && ui.held < 0 && !ui.fill) {
+    if (fm1_ms >= msg_until && ui.held < 0 && !ui.fill && !sr.on) {
         const char *pg = ui.view == V_SOUND || ui.view == V_FX || ui.view == V_MIX ? bank_now()->name : VIEWS[ui.view].name;
         char rp[16];
         if (ui.nr_on) { cat(cat(rp, "RPT "), NR_NAME[ui.nr_rate]); pg = rp; }
@@ -2045,6 +2638,7 @@ static uint32_t bot_hash(void)
     if (ui.held >= 0) h = hsh(hsh(hsh(h, mot_get(pat, set.ch, P_COND, (uint32_t)ui.held)), mot_get(pat, set.ch, P_MICRO, (uint32_t)ui.held)),
                               mot_get(pat, set.ch, P_RATCH, (uint32_t)ui.held));
     h = hsh(h, ui.view * 16u + ui.bank[ui.view]); h = hsh(h, seq.pat * 64u + seq.next); h = hsh(h, seq.run * 2u + set.ext);
+    h = hsh(h, sr.on * 16u + sr.song);         /* (song REC: the band red, its song) */
     h = hsh(h, len_now(pat) * 128u + orig_len(pat, len_ch())); h = hsh(h, ui.spage);
     return h;
 }
@@ -2174,7 +2768,7 @@ static void led(uint32_t key, int full, int dim)
 static void ui_leds(void)
 {
     uint32_t k, pat = cur_pat(), blink = (fm1_ms >> 7) & 1u, len = len_now(pat), st, home = ui.btn >> BTN_HOME & 1u;
-    static const uint8_t VBTN[NVIEW] = {BTN_HOME, BTN_HOME, BTN_ENV, BTN_SEQ, BTN_EDIT, BTN_LFO, BTN_FX};
+    static const uint8_t VBTN[NVIEW] = {BTN_HOME, BTN_HOME, BTN_ENV, BTN_SEQ, BTN_EDIT, BTN_LFO, BTN_FX, BTN_HOME};
     static const uint8_t OPENS[] = {BTN_HOME, BTN_ENV, BTN_SEQ, BTN_EDIT, BTN_LFO, BTN_FX, BTN_GLO, BTN_SAVE, BTN_SEL,
                                     BTN_PLAY, BTN_REC};   /* (PLAY, REC: dim when off, to find them) */
     for (k = 0; k < PANEL_NBTN; k++) { want(k, 0); want_glow(k, 0); }
@@ -2184,13 +2778,13 @@ static void ui_leds(void)
     want(BTN_REC, rec);
     want(BTN_SEL, ui.fill || ui.ask || ui.view == V_SET || lib_on());
     want(BTN_GLO, ui.btn >> BTN_GLO & 1u);
-    want(BTN_SAVE, kits_dirty() ? (fm1_ms >> 8) & 1u : kit_edited || memcmp(set_saved, &set, sizeof set) != 0);   /* (lit:
+    want(BTN_SAVE, kits_dirty() ? (fm1_ms >> 8) & 1u : kit_edited || arr_dirty || memcmp(set_saved, &set, sizeof set) != 0);   /* (lit:
                                                  * something SAVE would write; blinking: a kit's edits, any kit) */
     if (ui.view == V_STEPS || (ui.view == V_SOUND && one_ch()) || ui.view == V_LIVE) want_glow(BTN_ARP, 1);   /* ARP: dim where it does
                                                  * something, lit: note repeat on, a beat repeat */
     want(BTN_ARP, ui.nr_on || (ui.view == V_LIVE && ui.br_mode) || (ui.btn >> BTN_ARP & 1u));
-    if (ui.view == V_LIVE || ui.view == V_SOUND || ui.view == V_FX) { want_glow(BTN_OCT_DOWN, 1); want_glow(BTN_OCT_UP, 1); }
-    want(BTN_OCT_UP, (ui.view == V_LIVE && ui.pbank) ||   /* STEPS: OCT+ lit with steps after the 16 shown, OCT- with steps
+    if (ui.view == V_LIVE || ui.view == V_SONG || ui.view == V_SOUND || ui.view == V_FX) { want_glow(BTN_OCT_DOWN, 1); want_glow(BTN_OCT_UP, 1); }
+    want(BTN_OCT_UP, ((ui.view == V_LIVE || ui.view == V_SONG) && ui.pbank) ||   /* STEPS: OCT+ lit with steps after the 16 shown, OCT- with steps
                                                  * before, off otherwise (until 2026-11-13: both dim always) */
                      (ui.view == V_STEPS && (ui.spage + 1u) * 16u < pat_len(cur_pat())));
     if (ui.view == V_STEPS) want(BTN_OCT_DOWN, ui.spage > 0u);
@@ -2203,13 +2797,14 @@ static void ui_leds(void)
         int full = 0, dim = 0;
         if (ui.view == V_STEPS && (ui.btn >> BTN_ARP & 1u)) { dim = k < NR_N; full = k == ui.nr_rate; }   /* ARP held: the rates */
         else if (ui.view == V_LIVE && !home && ui.br_mode) { dim = k < BR_N; full = (int8_t)k == ui.br_k; }   /* (beat repeat: its lengths) */
-        else if (rec && !home && ui.view != V_LIVE) { dim = k < DRUM_NCH; full = k < DRUM_NCH && fm1_ms - hit_ms[k] < 80u; }
-        else if (ui.view == V_LIVE || home) {   /* (HOME held, on any page: the patterns its white keys pick) */
+        else if (rec && !home && ui.view != V_LIVE && ui.view != V_SONG) { dim = k < DRUM_NCH; full = k < DRUM_NCH && fm1_ms - hit_ms[k] < 80u; }
+        else if (ui.view == V_LIVE || ui.view == V_SONG || home) {   /* (SONG: its keys are patterns too) */   /* (HOME held, on any page: the patterns its white keys pick) */
             uint32_t p = ui.pbank * 16u + k, i, in_chain = 0;   /* playing: full; next: full, blinking fast; in the
                                                  * chain: dim, blinking slow; with notes: dim; empty: off */
-            for (i = 0; seq.chain_n >= 2u && i < seq.chain_n; i++) in_chain |= seq_chain_l[i] == p;
+            uint32_t nx = song_on >= 0 ? seq_after(seq.pat).pat : seq.next;   /* (a song: its next pattern) */
+            for (i = 0; (seq_list_n() >= 2u || song_on >= 0) && i < seq_list_n(); i++) in_chain |= (seq_list_l()[i].pat & (SEQ_NPAT - 1u)) == p;
             if (p == seq.pat) full = 1;
-            else if (p == seq.next) { full = (int)blink; dim = !blink; }
+            else if (p == nx) { full = (int)blink; dim = !blink; }
             else if (in_chain) dim = (int)(fm1_ms >> 9 & 1u);
             else dim = pat_used(p) != 0;
         } else if (ui.view == V_MIX) { full = k == kit_cur; dim = k < NKIT && (kits_used >> k & 1u); }
@@ -2228,7 +2823,13 @@ static void ui_leds(void)
     }
     for (k = 0; k < 11u; k++) {                 /* the black keys: 1-10 the channels, 11 the accents */
         int full = 0, dim = 0;
-        if (k < DRUM_NCH) {
+        if (k < DRUM_NCH && ui.view == V_SONG && !sr.on && ui.el < arr_nel(song_now())) {   /* SONG: the row chosen's mutes (dark:
+                                                 * muted), bright as the channel plays */
+            const arr_t *a = song_now();
+            uint32_t silent = a->s[arr_first(a, ui.el)].mute >> k & 1u;
+            full = !silent && fm1_ms - hit_ms[k] < 80u;
+            dim = !silent;
+        } else if (k < DRUM_NCH) {
             uint32_t silent = (seq.mute >> k & 1u) || (seq.solo && !(seq.solo >> k & 1u));
             full = !silent && fm1_ms - hit_ms[k] < 80u;   /* on every page as on HOME: bright as it plays, dim */
             dim = !silent;                                /* when silent, dark when muted; the one chosen blinks, stopped; */

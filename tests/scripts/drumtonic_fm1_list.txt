@@ -1,0 +1,164 @@
+# Drumtonic on the FM-1: the play list (song mode, step 3, 2026-11-17): elements of patterns, each played its times.
+# Made with the host's "list" (as a song will make it); BD's part in P1 is 5 steps (PRESETS on SEQ), so it goes on
+# across P1's times and from one element to the next on P1, and starts again when another pattern comes, or when the
+# list comes round to its top (as PLAY starts it: pos 0, pass 0). Patterns of 16 steps at 120: 2 s each. Probes:
+# pat, slot (the slot playing), el (its element's first slot), round (times gone round), pass, pos 0 (BD's step).
+# buttons: 8 HOME 11 SEQ 12 PLAY
+50 btn 8
+100 btn 11
+200 enc 6 -4
+210 expect 5 tlen 0 0
+220 expect 16 tlen 1 0
+300 btn 11
+# [P1] x2, [P2], [P1]: P1 goes on inside its times; the top, P1 after P1, starts clean (pos 0, pass 0) each time round
+800 list 1x2 2x1 1x1
+1000 btn 12
+1060 expect 0 pat
+1060 expect 0 slot
+1060 expect 0 el
+1060 expect 0 round
+1060 expect 0 pass
+1060 expect 0 pos 0
+3060 expect 0 pat
+3060 expect 0 slot
+3060 expect 0 el
+3060 expect 1 round
+3060 expect 1 pass
+3060 expect 1 pos 0
+5060 expect 1 pat
+5060 expect 1 slot
+5060 expect 1 el
+5060 expect 0 round
+5060 expect 0 pass
+5060 expect 0 pos 0
+7060 expect 0 pat
+7060 expect 2 slot
+7060 expect 2 el
+7060 expect 0 round
+7060 expect 0 pass
+7060 expect 0 pos 0
+# the second time round sounds as the first: BD's and SD's hits double (the top starts clean)
+8940 expect 25 chhits 0
+8940 expect 5 chhits 2
+9060 expect 0 pat
+9060 expect 0 slot
+9060 expect 0 el
+9060 expect 0 round
+9060 expect 0 pass
+9060 expect 0 pos 0
+11060 expect 0 pat
+11060 expect 0 slot
+11060 expect 0 el
+11060 expect 1 round
+11060 expect 1 pass
+11060 expect 1 pos 0
+13060 expect 1 pat
+13060 expect 1 slot
+13060 expect 1 el
+13060 expect 0 round
+13060 expect 0 pass
+13060 expect 0 pos 0
+15060 expect 0 pat
+15060 expect 2 slot
+15060 expect 2 el
+15060 expect 0 round
+15060 expect 0 pass
+15060 expect 0 pos 0
+16940 expect 50 chhits 0
+16940 expect 10 chhits 2
+17060 expect 0 pat
+17060 expect 0 slot
+17060 expect 0 el
+17060 expect 0 round
+17060 expect 0 pass
+17060 expect 0 pos 0
+19200 btn 12
+# [P1] x2, [P1], [P2]: P1 goes on into the next element (pos 2, pass 2); P2 starts fresh; then the top
+19800 list 1x2 1x1 2x1
+20000 btn 12
+20060 expect 0 pat
+20060 expect 0 slot
+20060 expect 0 el
+20060 expect 0 round
+20060 expect 0 pass
+20060 expect 0 pos 0
+22060 expect 0 pat
+22060 expect 0 slot
+22060 expect 0 el
+22060 expect 1 round
+22060 expect 1 pass
+22060 expect 1 pos 0
+24060 expect 0 pat
+24060 expect 1 slot
+24060 expect 1 el
+24060 expect 0 round
+24060 expect 2 pass
+24060 expect 2 pos 0
+26060 expect 1 pat
+26060 expect 2 slot
+26060 expect 2 el
+26060 expect 0 round
+26060 expect 0 pass
+26060 expect 0 pos 0
+28060 expect 0 pat
+28060 expect 0 slot
+28060 expect 0 el
+28060 expect 0 round
+28060 expect 0 pass
+28060 expect 0 pos 0
+30060 expect 0 pat
+30060 expect 0 slot
+30060 expect 0 el
+30060 expect 1 round
+30060 expect 1 pass
+30060 expect 1 pos 0
+32200 btn 12
+# [P1 P2] x2, [P2 P1]: a chain played twice, then P2 goes on into the next element (pass 1), then the top after P1
+33800 list 1,2x2 2,1x1
+34000 btn 12
+34060 expect 0 pat
+34060 expect 0 slot
+34060 expect 0 el
+34060 expect 0 round
+34060 expect 0 pass
+34060 expect 0 pos 0
+36060 expect 1 pat
+36060 expect 1 slot
+36060 expect 0 el
+36060 expect 0 round
+36060 expect 0 pass
+36060 expect 0 pos 0
+38060 expect 0 pat
+38060 expect 0 slot
+38060 expect 0 el
+38060 expect 1 round
+38060 expect 0 pass
+38060 expect 0 pos 0
+40060 expect 1 pat
+40060 expect 1 slot
+40060 expect 0 el
+40060 expect 1 round
+40060 expect 0 pass
+40060 expect 0 pos 0
+42060 expect 1 pat
+42060 expect 2 slot
+42060 expect 2 el
+42060 expect 0 round
+42060 expect 1 pass
+42060 expect 0 pos 0
+44060 expect 0 pat
+44060 expect 3 slot
+44060 expect 2 el
+44060 expect 0 round
+44060 expect 0 pass
+44060 expect 0 pos 0
+46060 expect 0 pat
+46060 expect 0 slot
+46060 expect 0 el
+46060 expect 0 round
+46060 expect 0 pass
+46060 expect 0 pos 0
+48200 btn 12
+50000 list
+50100 expect 0 chain
+50200 end

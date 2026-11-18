@@ -48,6 +48,12 @@ run "Drumtonic, FM-1: after the restore's restart, the backup's saves load (temp
 rm -f build/host/lanes.flash
 run "Drumtonic, FM-1: all 176 motion lanes used (pastes), one more is MOTION FULL, SAVE (the record fits its 5 sectors)" env HOST_FLASH=build/host/lanes.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_lanesfull.txt
 run "Drumtonic, FM-1: the 176 lanes load after a restart" env HOST_FLASH=build/host/lanes.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_lanesfull2.txt
+rm -f build/host/songs.flash
+run "Drumtonic, FM-1: songs written with the keys and saved with SAVE (its light), in the settings' record (expect)" env HOST_FLASH=build/host/songs.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_song_save.txt
+run "Drumtonic, FM-1: the songs load after a restart, SAVE dim (expect, shot)" env HOST_FLASH=build/host/songs.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_song_save2.txt
+rm -f build/host/songs.flash
+run "Drumtonic, FM-1: a settings' record of 8 bytes, as before the songs (expect)" env HOST_FLASH=build/host/songs.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_song_old.txt
+run "Drumtonic, FM-1: it loads after a restart: its tempo, songs empty, SAVE dim (expect)" env HOST_FLASH=build/host/songs.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_song_old2.txt
 run "Drumtonic, FM-1: micro timing, a step held + OCT-/OCT+ (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_micro.txt
 run "Drumtonic, FM-1: micro timing on knob 2, stopping at 0 on its way across (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_micro_knob.txt
 run "Drumtonic, FM-1: HOME + OCT- / OCT+ undo and redo; a change after an undo keeps the redo; a knob, a REC pass (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_undo.txt
@@ -70,6 +76,15 @@ run "Drumtonic, FM-1: SEQ past 16 steps: OCT- / OCT+ lit where there are more, S
 run "Drumtonic, FM-1: the state band leaves fields out, never overlaps (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_band.txt
 run "Drumtonic, FM-1: the knobs accelerate when spun, also on a slow main loop; TEMPO never (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_knob_accel.txt
 run "Drumtonic, FM-1: each pattern's kit, loaded as it starts, edits kept, revert, undo, SAVE (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_patkit.txt
+run "Drumtonic, FM-1: PLAY starts a chain at its first entry, with its kit (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_chain_play.txt
+run "Drumtonic, FM-1: the play list: elements and their times, a part going on, the top clean (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_list.txt
+run "Drumtonic, FM-1: a play list that stops at its end: STOP out, nothing more, a hit near the end stays (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_list_stop.txt
+run "Drumtonic, FM-1: a play list that stops at its end on a DAW's clock: silent until its STOP and START (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_list_stop_ext.txt
+run "Drumtonic, FM-1: the SONG page, read only: HOME's three pages, an empty song, a song's elements, PRESETS, SELECT, REC (expect, shots)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_song_page.txt
+run "Drumtonic, FM-1: writing a song: pattern keys, chains, times, END, tempo, copy / insert / delete, CLEAR SONG?, SONG FULL (expect, shots)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_song_edit.txt
+run "Drumtonic, FM-1: playing a song: SEL cues and jumps, LIVE's row and count, kits by row, LOOP, leaving by hand, the song's tempo, END STOP, from the chain (expect, shots)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_song_play.txt
+run "Drumtonic, FM-1: a song's rows with their mutes: set as each row starts, by hand until the next, written with the black keys on SONG (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_song_mutes.txt
+run "Drumtonic, FM-1: recording a song by playing it: patterns, chains and their rounds, a chain left mid-round, mutes by last quarters, REPLACE SONG? (expect, shots)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_song_rec.txt
 run "Drumtonic, FM-1: beat repeat on HOME: ARP on, whites 1-4, an empty slice, back in time (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_beatrepeat.txt
 run "Drumtonic, FM-1: beat repeat on a wobbling MIDI clock, tempo changes (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_beatrepeat_ext.txt
 run "Drumtonic, FM-1: beat repeat, another white while it loops: a piece of what is heard (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_beatrepeat_narrow.txt

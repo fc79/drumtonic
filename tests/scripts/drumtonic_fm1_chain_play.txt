@@ -1,0 +1,67 @@
+# Drumtonic on the FM-1: PLAY starts a chain at its first entry (song mode, step 2, 2026-11-17). Before, STOP in a
+# chain's second entry then PLAY kept the pattern but counted from the chain's top: P1 P2 P2 stopped in its first P2
+# played P2 P2 P2 P1. Now PLAY plays P1 P2 P2, with P1's kit before its first hits; a pattern picked by hand ends the
+# chain. P1 has kit 2 (TIGHT), P2 kit 1. buttons: 4 ENV (MIX) 8 HOME 12 PLAY; white 1 = 0x1, 2 = 0x4, 3 = 0x10
+# (a first press only closes the opening)
+50 btn 8
+100 expect 0 view
+# MIX, white 2: kit 2 for P1
+150 btn 4
+160 keys 0x4
+170 keys 0
+180 btn 8
+190 expect 2 patkit 0
+190 expect 1 patkit 1
+# the chain P1 P2 P2: white 1 held, white 2 tapped twice
+200 keys 0x1
+250 keys 0x5
+270 keys 0x1
+300 keys 0x5
+320 keys 0x1
+350 keys 0
+360 expect 3 chain
+1000 btn 12
+1010 expect 1 kitcur
+1500 expect 0 pat
+3300 expect 1 pat
+3300 expect 0 kitcur
+5300 expect 1 pat
+7300 expect 0 pat
+7300 expect 1 kitcur
+9300 expect 1 pat
+# STOP inside the chain's second entry (P2, the first of the two): it stays there while stopped
+9500 btn 12
+9600 expect 0 run
+9700 expect 3 chain
+9800 expect 1 pat
+9800 expect 0 kitcur
+# PLAY: the chain from its top, P1 with its kit at once
+10000 btn 12
+10010 expect 0 pat
+10010 expect 1 kitcur
+10200 expect 0 pat
+12300 expect 1 pat
+14300 expect 1 pat
+16300 expect 0 pat
+# a pattern picked by hand (HOME + white 3) ends the chain
+16500 btndown 8
+16550 keys 0x10
+16600 keys 0
+16650 btnup 8
+16700 expect 0 chain
+16800 expect 2 next
+# a chain of two (P1 P2) stopped in P2: PLAY starts it at P1 again
+16900 btn 12
+17000 keys 0x1
+17050 keys 0x5
+17100 keys 0x1
+17150 keys 0
+17200 expect 2 chain
+17300 btn 12
+17310 expect 0 pat
+19400 expect 1 pat
+19600 btn 12
+19700 btn 12
+19710 expect 0 pat
+21800 expect 1 pat
+22000 end

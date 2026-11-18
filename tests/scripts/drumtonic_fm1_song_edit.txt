@@ -1,0 +1,138 @@
+# Drumtonic on the FM-1: writing a song on the SONG page (song mode, step 6, 2026-11-17). The pattern keys write the
+# element chosen without launching it: a tap, that pattern; a key held and others tapped, that chain (as the first is
+# let go); on END, a new element x1, and END stays chosen (the user's choice). ALGORITHM: the element's times, on END
+# LOOP / STOP. Knob 1: the song's tempo (the one playing as it got its first element). GLO held copies the element,
+# GLO + SEL inserts the copy, GLO + REC deletes the element; on END, the whole song after CLEAR SONG 1? (HOME no, SEL
+# yes: the user's choice). OCT+: patterns 17-32. 64 patterns a song: SONG FULL, a chain cut there. Not in undo.
+# Probes: songel (the element chosen; elements + 1: END), songels N, sn (slots), spat N (slot N's pattern, 1..),
+# srep N (element N's times), songend (0 LOOP, 1 STOP), sbpm, ask (10: CLEAR SONG).
+# keys: white 1 = 0x1, 2 = 0x4, 3 = 0x10, 4 = 0x40, 5 = 0x80. buttons: 1 OCT+ 0 OCT- 3 SEL 7 GLO 8 HOME 13 REC;
+# encoders: 0 SELECT 1 ALGORITHM 2 KNOB 1
+50 btn 8
+100 btn 8
+150 expect 7 view
+150 expect 1 songel
+# on END: P1, a new element x1; END stays chosen
+200 keys 0x1
+250 keys 0
+260 expect 1 songels 1
+260 expect 2 songel
+260 expect 1 spat 1
+260 expect 1 srep 1
+260 expect 120 sbpm
+260 expect 0 pat
+# on END: P2 held, P3 and P4 tapped: the chain, as P2 is let go
+300 keys 0x4
+350 keys 0x14
+380 keys 0x4
+400 keys 0x44
+420 keys 0x4
+430 expect 1 songels 1
+450 keys 0
+460 expect 2 songels 1
+460 expect 4 sn
+460 expect 4 spat 4
+460 expect 3 songel
+# element 2: x4, then P5 in place of its chain (its times kept)
+500 enc 0 -1
+510 expect 2 songel
+520 enc 1 3
+530 expect 4 srep 2
+600 keys 0x80
+650 keys 0
+660 expect 2 sn
+660 expect 5 spat 2
+660 expect 4 srep 2
+670 enc 1 -10
+680 expect 1 srep 2
+690 enc 1 3
+# END: STOP, LOOP, STOP; knob 1: the tempo
+700 enc 0 1
+710 expect 3 songel
+720 enc 1 1
+730 expect 1 songend
+740 enc 1 -1
+750 expect 0 songend
+760 enc 1 1
+800 enc 2 5
+810 expect 125 sbpm
+810 expect 120 bpm
+900 shot
+# GLO held on element 1: copied; on element 2, GLO + SEL inserts it there
+1000 enc 0 -2
+1010 expect 1 songel
+1100 btndown 7
+1400 btnup 7
+1500 enc 0 1
+1600 btndown 7
+1650 btn 3
+1700 btnup 7
+1710 expect 3 songels 1
+1710 expect 1 spat 2
+1710 expect 5 spat 3
+1710 expect 4 srep 3
+1710 expect 2 songel
+1800 shot
+# GLO + REC on element 1: deleted (no question), REC stays off
+1900 enc 0 -1
+2000 btndown 7
+2050 btn 13
+2100 btnup 7
+2110 expect 2 songels 1
+2110 expect 0 rec
+2110 expect 0 ask
+# GLO + REC on END: CLEAR SONG 1?; HOME no, then SEL yes
+2200 enc 0 5
+2300 btndown 7
+2350 btn 13
+2400 btnup 7
+2410 expect 10 ask
+2450 shot
+2500 btn 8
+2510 expect 0 ask
+2510 expect 2 songels 1
+2510 expect 7 view
+2600 btndown 7
+2650 btn 13
+2700 btnup 7
+2800 btn 3
+2810 expect 0 ask
+2810 expect 0 songels 1
+2810 expect 0 sn
+2810 expect 0 sbpm
+2810 expect 1 songel
+# OCT+: P17
+2900 btn 1
+3000 keys 0x1
+3050 keys 0
+3060 expect 17 spat 1
+3100 btn 0
+# GLO + SEL with nothing copied on another song: song 2, NOTHING TO PASTE (the copy is kept: GLO + SEL pastes it)
+3200 enc 6 1
+3210 expect 2 song
+3300 btndown 7
+3350 btn 3
+3400 btnup 7
+3410 expect 1 songels 2
+3410 expect 1 sn
+# SONG FULL: song 1 with 62 patterns; a chain of four on END: two go in, two are cut; a tap then: nothing
+3500 enc 6 -1
+3510 song 1 1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7x1 1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7x1 1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7x1 1,2,3,4,5,6,7,8,9,1,2,3,4,5x1
+3520 enc 0 10
+3530 expect 5 songel
+3600 keys 0x1
+3620 keys 0x5
+3640 keys 0x1
+3660 keys 0x11
+3680 keys 0x1
+3700 keys 0x41
+3720 keys 0x1
+3740 keys 0
+3750 expect 64 sn
+3750 expect 5 songels 1
+3750 expect 2 spat 64
+3800 keys 0x80
+3850 keys 0
+3860 expect 64 sn
+3900 shot
+4000 end

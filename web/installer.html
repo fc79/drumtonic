@@ -387,7 +387,7 @@ function bshow(html, actions = {}) {
   for (const [id, fn] of Object.entries(actions)) $(id).onclick = fn;
   if (had) { const h = bpanel.querySelector("h2"); if (h) { h.tabIndex = -1; h.focus(); } }   /* (keyboard: not lost) */
 }
-const WORDS = [["SETS", "settings"], ["KIT1", "kits 1–8"], ["SONG", "patterns"], ["KIT2", "kits 9–16"], ["LIB", "sound library"]];
+const WORDS = [["SETS", "settings and songs"], ["KIT1", "kits 1–8"], ["SONG", "patterns"], ["KIT2", "kits 9–16"], ["LIB", "sound library"]];
 function contents(recs) {                       /* "settings, kits 1–8, patterns, kits 9–16; sound library: empty" */
   const has = n => recs.some(r => r.name.startsWith(n) && r.data.length);
   const yes = WORDS.filter(([n]) => has(n)).map(w => w[1]), no = WORDS.filter(([n]) => !has(n)).map(w => w[1]);

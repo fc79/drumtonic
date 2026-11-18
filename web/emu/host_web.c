@@ -188,6 +188,7 @@ static const uint32_t *cpu_power(void) { static const uint32_t v[4] = {1260u, 14
 static uint32_t cpu_cores(void) { return 2u; }
 static uint32_t cpu_mhz(void) { return 360u; }
 static int host_probe(const char *name, const int *a, int n, int *got);   /* (the app's; emu_probe below) */
+static int host_list(const char *spec);          /* (the app's; emu_list below) */
 
 /* the sound out: a ring of int16 stereo frames, as the FM-1 sends it over USB (MASTER all the way up); the page
  * reads it from emu_audio_buf(), up to emu_audio_w() */
@@ -268,3 +269,7 @@ int32_t EMU_EXPORT(emu_probe)(int32_t n)
     emu_pname[15] = 0;
     return host_probe(emu_pname, emu_pargs, n, &got) ? -32768 : got;
 }
+/* tests/host.c's "list": a play list as a song will make it (its text in emu_list_spec's 256 B); 0 done, -1 not one */
+static char emu_lspec[256];
+char *EMU_EXPORT(emu_list_spec)(void) { return emu_lspec; }
+int32_t EMU_EXPORT(emu_list)(void) { emu_lspec[255] = 0; return host_list(emu_lspec); }

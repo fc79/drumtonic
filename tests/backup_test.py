@@ -160,9 +160,12 @@ def main():
     except I.InstallError as e:
         ok(e.code == "badbackup" and "SETS" in str(e), "a damaged record is refused (its crc32)")
     chunk, gen, info, proto = I.bk_info(b)              # a last chunk of one byte, and a refusal (past the end: None)
+    one = [(i, c) for i in range(len(info)) for c in range(16, chunk) if dict(info[i])["len"] % c == 1]   # (a record and a
+    i, c = one[0]                               # chunk size that leave one byte: SETS was 20 B, 19 a chunk, before songs)
+    rec1 = dict(info[i])
+    ok(I.bk_pull(b, c, gen, rec1, lambda n: None) == recs[i]["data"] and rec1["len"] % c == 1,
+       f"a record whose last chunk is one byte ({rec1['len']} B, {c} a chunk)")
     sets = dict(info[0])
-    ok(I.bk_pull(b, 19, gen, sets, lambda n: None) == recs[0]["data"] and sets["len"] % 19 == 1,
-       "a record whose last chunk is one byte")
     sets["len"] += 1
     ok(I.bk_pull(b, chunk, gen, sets, lambda n: None) is None, "a READ past the record's end: refused, pulled again")
     b.close()

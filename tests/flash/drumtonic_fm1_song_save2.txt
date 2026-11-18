@@ -1,0 +1,23 @@
+# Drumtonic on the FM-1: after tests/flash/drumtonic_fm1_song_save.txt (same HOST_FLASH): the songs load as saved,
+# SAVE dim (nothing to save). buttons: 8 HOME; encoders: 6 PRESETS
+50 btn 8
+100 btn 8
+150 expect 7 view
+150 expect 2 songels 1
+150 expect 1 songels 2
+150 expect 0 songels 3
+150 expect 3 sn
+150 expect 1 spat 1
+150 expect 2 spat 2
+150 expect 3 spat 3
+150 expect 1 srep 1
+150 expect 3 srep 2
+150 expect 1 songend
+150 expect 125 sbpm
+150 expect 120 bpm
+150 expect 2 led 9
+200 enc 6 1
+250 expect 5 spat 1
+250 expect 0 songend
+300 shot
+400 end

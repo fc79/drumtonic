@@ -43,6 +43,8 @@ function parse(text) {
         else if (what === "midi" || what === "trs") ev.push({ t, k: "midi", m: [cint(a[0]) & 255, cint(a[1]) & 255, cint(a[2]) & 255, what === "trs" ? 2 : 1] });
         else if (what === "clock") { const bpm = cint(a[0]), n = cint(a[1]);
             for (let i = 0; i < n && bpm; i++) ev.push({ t: t + Math.floor(i * 2500 / bpm), k: "midi", m: [0xF8, 0, 0, 1] }); }
+        else if (what === "list" || what === "song")
+            ev.push({ t, k: "list", spec: (what === "song" ? "song " : "") + a.join(" ").split("#")[0].trim() });
         else if (what === "expect" && a.length >= 2) ev.push({ t, k: "expect", v: cint(a[0]), name: a[1].slice(0, 15), args: a.slice(2, 6).map(cint) });
     }
     ev.sort((x, y) => x.t - y.t);            // stable, as host.c's insertion sort
@@ -60,6 +62,7 @@ async function runEmu(text) {
             else if (e.k === "btn") emu.button(e.id, e.how);
             else if (e.k === "enc") emu.encoder(e.id, e.n);
             else if (e.k === "midi") emu.midi(...e.m);
+            else if (e.k === "list" && emu.list(e.spec)) fails++;
             else if (e.k === "expect" && emu.probe(e.name, e.args) !== e.v) fails++;
         }
         emu.step();

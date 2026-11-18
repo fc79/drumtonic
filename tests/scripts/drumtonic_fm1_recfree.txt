@@ -6,6 +6,7 @@
 # LT: black 5 = key bit 13 (0x2000), MIDI note 41
 50 btn 8
 200 btn 8
+250 btn 8
 300 enc 0 1
 350 btn 3
 400 expect 1 recfree

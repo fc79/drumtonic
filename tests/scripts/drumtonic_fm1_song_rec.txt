@@ -1,0 +1,83 @@
+# Drumtonic on the FM-1: recording a song by playing it (song mode, step 12, 2026-11-18; SONG-MODE.md 10.4, 11.2).
+# REC on SONG (song 1, empty): the band REC SONG 1; the pattern keys launch, as on LIVE. PLAY: P1 three times; then a
+# chain P1 P2 made while P1 plays (that P1 counts as its first: it goes on to P2), round twice; then P3 tapped while P1
+# plays the chain again. REC ends it during P3. Written: [P1] x3, [P2] (the chain's first round, begun at P2), [P1 P2]
+# x2, [P1] (its last round, left before P2), [P3]. Song 2: P1 with OH muted before its first last quarter (the whole
+# first P1), let go in the second's last quarter (so from the third): [P1] x2 with OH, [P1] x2. A song with rows asks
+# REPLACE SONG 1? (HOME no, SEL yes). 120 BPM: a pattern 2 s, its last quarter from step 12 (1.5 s in).
+# keys: white 1 = 0x1, 2 = 0x4, 3 = 0x10; black 5 (OH) = 0x400. buttons: 3 SEL 8 HOME 12 PLAY 13 REC; encoders:
+# 0 SELECT 6 PRESETS. Probes: srec, songels, sn, spat, srep, smute (bit 4: OH)
+50 btn 8
+100 btn 8
+110 expect 7 view
+150 btn 13
+160 expect 1 srec
+200 shot
+1000 btn 12
+1500 expect 1 songels 1
+1500 expect 1 srep 1
+3500 expect 2 srep 1
+5500 keys 0x1
+5550 keys 0x5
+5600 keys 0x1
+5650 keys 0
+5660 expect 2 chain
+6000 shot
+7500 expect 1 pat
+17500 keys 0x10
+17550 keys 0
+19500 expect 2 pat
+19600 shot
+20500 btn 13
+20510 expect 0 srec
+20510 expect 5 songels 1
+20510 expect 6 sn
+20510 expect 1 spat 1
+20510 expect 3 srep 1
+20510 expect 2 spat 2
+20510 expect 1 srep 2
+20510 expect 1 spat 3
+20510 expect 2 spat 4
+20510 expect 2 srep 3
+20510 expect 1 spat 5
+20510 expect 1 srep 4
+20510 expect 3 spat 6
+20510 expect 1 srep 5
+20510 expect 120 sbpm
+20600 shot
+21000 btn 12
+# song 2: the mutes by whole patterns
+21100 enc 6 1
+21110 expect 2 song
+21200 btn 13
+21210 expect 1 srec
+21300 keys 0x1
+21350 keys 0
+30000 btn 12
+30500 keys 0x400
+30550 keys 0
+30600 expect 16 mute
+33700 keys 0x400
+33750 keys 0
+33800 expect 0 mute
+37500 btn 13
+37510 expect 2 songels 2
+37510 expect 16 smute 1
+37510 expect 2 srep 1
+37510 expect 0 smute 2
+37510 expect 2 srep 2
+38000 btn 12
+# REPLACE SONG 2?: HOME no, then SEL yes (empty again, recording)
+38100 btn 13
+38110 expect 11 ask
+38200 btn 8
+38210 expect 0 ask
+38210 expect 0 srec
+38210 expect 2 songels 2
+38300 btn 13
+38400 btn 3
+38410 expect 1 srec
+38410 expect 0 songels 2
+38500 btn 13
+38510 expect 0 srec
+38600 end

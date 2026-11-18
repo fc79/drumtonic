@@ -66,4 +66,17 @@
 30500 btn 11
 30600 btn 13
 31800 shot
-32000 end
+# the songs (song mode): song 1 as in the manual, row 1 cued and playing, row 2 chosen; then LIVE with it
+31900 btn 13
+32000 btn 12
+32100 song 1 1x4m2.3.5.6.7.8.9.10 1,1,2,3x2m5 5x2 1,2,1,4,6,6,7,8,2,3x1m1.10
+32200 btn 8
+32300 btn 8
+32400 btn 3
+32500 btn 12
+33600 enc 0 1
+34000 shot
+34100 btn 8
+34200 btn 8
+35000 shot
+35500 end
