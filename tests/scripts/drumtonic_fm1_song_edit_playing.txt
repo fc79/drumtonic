@@ -1,0 +1,22 @@
+# Drumtonic on the FM-1: a song edited while it plays (the debugging cycle, 2026-11-18). Song 1: [P1] x1, [P2 P3 P4]
+# x2, LOOP. While P3 plays (row 2), GLO + REC deletes row 1: the list's slots move up under the ISR's place, which it
+# finds again as the element of the slot it is on (not a slot in the middle of an element, played for ever): P3 ends,
+# then row 1 (now [P2 P3 P4]) goes round, its count from the start. Before the fix: P3 P4 P3 P4... for ever.
+# buttons: 3 SEL 7 GLO 8 HOME 12 PLAY 13 REC. Probes: pat (0..), songels N.
+30 btn 8
+60 btn 8
+70 expect 7 view
+100 song 1 1x1 2,3,4x2
+150 btn 3
+200 btn 12
+2500 expect 1 pat
+4500 expect 2 pat
+4600 btndown 7
+4650 btn 13
+4700 btnup 7
+4710 expect 1 songels 1
+6500 expect 1 pat
+8500 expect 2 pat
+10500 expect 3 pat
+12500 expect 1 pat
+13000 end

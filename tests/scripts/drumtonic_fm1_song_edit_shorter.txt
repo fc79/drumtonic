@@ -1,0 +1,18 @@
+# Drumtonic on the FM-1: a song made shorter than the place playing (the debugging cycle, 2026-11-18). Song 1: [P1]
+# [P2] [P3] [P4], x1 each, LOOP. While P4 plays (slot 4), GLO + REC deletes row 1: three slots left, the place past
+# the end: the song goes on at its top, P2, then P3 (before the fix: slot 1 counted as played, P2 skipped).
+# buttons: 3 SEL 7 GLO 12 PLAY 13 REC. Probes: pat (0..), songels N.
+30 btn 8
+60 btn 8
+70 expect 7 view
+100 song 1 1x1 2x1 3x1 4x1
+150 btn 3
+200 btn 12
+6500 expect 3 pat
+7000 btndown 7
+7050 btn 13
+7100 btnup 7
+7110 expect 3 songels 1
+8500 expect 1 pat
+10500 expect 2 pat
+10600 end

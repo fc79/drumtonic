@@ -1,0 +1,27 @@
+# Drumtonic on the FM-1: song REC, two chains of the same length one after the other (the debugging cycle,
+# 2026-11-18). PLAY, a chain P1 P2 (P1 counts as its first), then while P2 plays a chain P3 P4: each list published has
+# its own count in seq.list, so the recording sees something else launched and writes [P3 P4] (before the fix: the
+# old chain's patterns, [P1 P2]). Written: [P1], [P2], [P3 P4], [P3].
+# keys: white 1 = 0x1, 2 = 0x4, 3 = 0x10, 4 = 0x40. buttons: 8 HOME 12 PLAY 13 REC. Probes: srec, pat, spat N.
+50 btn 8
+100 btn 8
+110 expect 7 view
+150 btn 13
+160 expect 1 srec
+1000 btn 12
+1500 keys 0x1
+1550 keys 0x5
+1600 keys 0x1
+1650 keys 0
+3500 expect 1 pat
+3600 keys 0x10
+3650 keys 0x50
+3700 keys 0x10
+3750 keys 0
+5500 expect 2 pat
+7500 expect 3 pat
+9500 btn 13
+9510 expect 0 srec
+9600 expect 3 spat 3
+9600 expect 4 spat 4
+9700 end

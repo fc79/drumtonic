@@ -1,0 +1,9 @@
+# Drumtonic on the FM-1: a pattern key held on LIVE and let go on SONG (HOME tapped meanwhile) writes nothing into the
+# song (the debugging cycle, 2026-11-18; before: the key wrote song 1's row). keys: white 3 = 0x10. buttons: 8 HOME.
+30 btn 8
+1000 keys 0x10
+1100 btn 8
+1150 expect 7 view
+1200 keys 0
+1300 expect 0 songels 1
+1400 end

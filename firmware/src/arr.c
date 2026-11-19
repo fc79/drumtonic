@@ -17,22 +17,23 @@ static arr_t arr[ARR_NSONG];
 static uint8_t arr_dirty;                       /* a song changed since the last SAVE or load (SAVE's light) */
 #define ARR_FMT 0x31525241u                     /* "ARR1" */
 
-static void arr_check(void)                     /* a song loaded: one that does not make sense is emptied */
+static uint32_t arr_ok(const arr_t *a)          /* a song that makes sense */
 {
-    uint32_t k, i;
-    for (k = 0; k < ARR_NSONG; k++) {
-        arr_t *a = &arr[k];
-        uint32_t ok = a->n <= ARR_NSLOT && a->end <= ARR_STOP && (!a->bpm || (a->bpm >= 40u && a->bpm <= 250u)) &&
-                      (!a->n || (a->s[0].pat & SEQ_EL));
-        for (i = 0; ok && i < a->n; i++) {
-            uint32_t run = 1;                   /* (an element: 1..64 times, 1..16 patterns) */
-            if (!(a->s[i].pat & SEQ_EL)) continue;
-            if (a->s[i].rep < 1u || a->s[i].rep > 64u || (a->s[i].pat & 0x60u)) ok = 0;
-            while (i + run < a->n && !(a->s[i + run].pat & SEQ_EL)) run++;
-            if (run > ARR_ELMAX) ok = 0;
-        }
-        if (!ok) memset(a, 0, sizeof *a);
+    uint32_t i, ok = a->n <= ARR_NSLOT && a->end <= ARR_STOP && (!a->bpm || (a->bpm >= 40u && a->bpm <= 250u)) &&
+                     (!a->n || (a->s[0].pat & SEQ_EL));
+    for (i = 0; ok && i < a->n; i++) {
+        uint32_t run = 1;                       /* (an element: 1..64 times, 1..16 patterns) */
+        if (!(a->s[i].pat & SEQ_EL)) continue;
+        if (a->s[i].rep < 1u || a->s[i].rep > 64u || (a->s[i].pat & 0x60u)) ok = 0;
+        while (i + run < a->n && !(a->s[i + run].pat & SEQ_EL)) run++;
+        if (run > ARR_ELMAX) ok = 0;
     }
+    return ok;
+}
+static void arr_check(void)                     /* the songs loaded: one that does not make sense is emptied */
+{
+    uint32_t k;
+    for (k = 0; k < ARR_NSONG; k++) if (!arr_ok(&arr[k])) memset(&arr[k], 0, sizeof arr[k]);
 }
 
 static uint32_t arr_nel(const arr_t *a)         /* its elements */

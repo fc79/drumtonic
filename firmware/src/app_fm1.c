@@ -46,8 +46,9 @@ static uint16_t kits_used;                      /* (bit k: kit k + 1 holds a sou
 static uint8_t kit_cur, snd_kc;
 static snd_blob_t snd_io POOL;
 static snd_hi_t *snd_hi_io(void);               /* (kits 9..16's bytes: song_io's, below)*/
-static uint8_t *io_scratch(void);               /* (io_buf, below, as scratch for what never meets a save or a load:
-                                                 * snd_load's old formats, lib_load's other copy, mot_copy's lanes) */
+static uint8_t *io_scratch(void);               /* (io_buf, below, as scratch for what never meets another save or
+                                                 * load: snd_load's old formats, lib_load's other copy, mot_copy's lanes,
+                                                 * the settings' record in sets_save / sets_load) */
 
 static void mot_kit_changed(uint32_t ch);
 static void mot_all_changed(void);
@@ -675,6 +676,8 @@ static int host_list(const char *spec)          /* tests/host.c's "list" (and "s
         for (i = 0; i < n; i++) { a->s[i].pat = s[i].pat; a->s[i].rep = s[i].rep; a->s[i].mute = mute[i]; }
         a->n = (uint8_t)n;
         a->end = stop ? ARR_STOP : ARR_LOOP;
+        if (!arr_ok(a)) { memset(a, 0, sizeof *a); return -1; }   /* (x0, an element over 16: not a song the
+                                                 * instrument can make) */
         return 0;
     }
     for (i = 0; i < n; i++) s[i].mute = mute[i];
@@ -828,8 +831,9 @@ static void app_main(void)
     for (;;) {
         platform_poll();
         bk_poll();                              /* (a restore: its question's time, its restart) */
-        if (seq.ended && seq.run && !seq.restart && !seq.ext) transport(0);   /* a list stopped at its end: STOP, as
-                                                 * the button (not a PLAY the ISR has not started yet) */
+        if (!seq.restart && seq.ended && seq.run && !seq.ext) transport(0);   /* a list stopped at its end: STOP, as
+                                                 * the button (not a PLAY the ISR has not started yet: restart read
+                                                 * first, as the ISR clears it with ended) */
         if (bk_busy()) { uint32_t rel; (void)fm1_input_edges(&rel); (void)fm1_input_note_edges(); }   /* (a restore
                                                  * writing: no input, no save from RAM over it) */
         else ui_input();

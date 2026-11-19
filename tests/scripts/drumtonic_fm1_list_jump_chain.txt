@@ -1,0 +1,27 @@
+# Drumtonic on the FM-1: a jump asked for and not taken is forgotten (the debugging cycle, 2026-11-18). Song 1 plays;
+# SEL on row 3 asks for a jump to it as P1 ends; before that, on LIVE, a chain P2 P3 P4 is made by hand: it plays from
+# its top (P2), not from the old jump's slot (P4 for ever, before the fix).
+# keys: white 2 = 0x4, 3 = 0x10, 4 = 0x40. buttons: 3 SEL 8 HOME 12 PLAY; encoders: 0 SELECT. Probes: view, chain, pat.
+30 btn 8
+60 btn 8
+70 expect 7 view
+100 song 1 1x1 2x1 3,4,5x1
+150 btn 3
+200 btn 12
+500 enc 0 2
+600 btn 3
+700 btn 8
+750 btn 8
+760 expect 0 view
+800 keys 0x4
+850 keys 0x14
+900 keys 0x4
+950 keys 0x44
+1000 keys 0x4
+1050 keys 0
+1100 expect 3 chain
+2500 expect 1 pat
+4500 expect 2 pat
+6500 expect 3 pat
+8500 expect 1 pat
+9000 end

@@ -110,7 +110,8 @@ first pattern's kit at once) and PLAY starts it; playing, the song goes there wh
 row's pattern brings its kit, as in a chain. LOOP comes round to row 1; STOP stops after the last row (STOP is also
 sent to MIDI). On LIVE, `SONG 1` and `ROW 2/4` are where the kit was, the row's count is beside the pattern
 (`2/4`), and on its last pattern the next row's pattern shows instead (`>P2`) with the bar white. While a song is on,
-TEMPO on LIVE is the song's tempo.
+TEMPO on LIVE is the song's tempo. On a computer's clock, a song that ends with STOP goes silent but the steps keep
+counting: a pattern or a chain picked then starts in time, when that silent pattern ends.
 
 **Leaving a song.** Pick a pattern by hand: a white key on LIVE (or a chain), or HOME + a white key from any page.
 It starts when the pattern playing ends, as usual, and the song stays as it is: SEL on a row plays it again. On the
@@ -121,7 +122,8 @@ band turns red, `REC SONG 2`. Now the white keys launch patterns and chains and 
 the song writes itself as you play: each time a pattern or a chain goes round whole, its row's times go up; leave a
 chain halfway and the patterns played make a row of their own. Mutes are taken a pattern at a time: a mute changed in
 a pattern's last quarter counts from the next pattern (pressed just before the bar, it lands on the bar). You can go
-to LIVE and back while recording. REC or STOP ends it (so does opening another page, or a full song: the music goes
+to LIVE and back while recording. The song being recorded can't be edited meanwhile (`END REC TO EDIT`); other
+songs can. REC or STOP ends it (so does opening another page, or a full song: the music goes
 on), and the song keeps the tempo playing.
 
 ### SEQ: STEPS

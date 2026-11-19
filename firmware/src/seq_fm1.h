@@ -4,7 +4,7 @@
  * runs in the audio ISR (DRUM_BLOCK_HOOK -> seq_block), as on the SMK-37 (seq.c); with an external MIDI clock a step
  * is 6, 4, 3 or 8 clocks (1/16, 1/16T, 1/32, 1/8T), with no swing.
  *
- *   seq_play(), seq_stop()          main loop: start from step 1 of the current pattern, stop
+ *   seq_play(), seq_stop()          main loop: start from step 1 (a play list: at its cued row), stop
  *   seq_pattern(p)                  main loop: the next pattern; while playing it takes over when this one ends
  *   seq_chain(list, n)              main loop: play these patterns in turn (n < 2: no chain)
  *   seq_rec(ch, vel)                main loop: a live hit into the playing pattern, on the nearest step
@@ -12,7 +12,8 @@
  *   seq_clocks_due()                main loop: MIDI clocks to send since the last call (internal clock)
  *   seq_get(), seq_set()            a step: 0 off, STEP_ON, STEP_ACC
  *
- * seq_song is written by the main loop (whole words) and read by the ISR; seq's fields have one writer each.
+ * seq_song is written by the main loop (whole words) and read by the ISR; seq's fields have one writer each (list_at, list_el,
+ * list_round: main too, as it starts a list, with no list published).
  * SEQ_STEP_HOOK(pat, step) runs before a step's hits, SEQ_COND(pat, ch, step) says whether a hit plays (motion.c). */
 #pragma once
 #include <stdint.h>

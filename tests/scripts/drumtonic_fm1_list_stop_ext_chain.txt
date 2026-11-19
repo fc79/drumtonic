@@ -1,0 +1,23 @@
+# Drumtonic on the FM-1 on a DAW's clock: a chain picked after a list's end (the debugging cycle, 2026-11-18). [P1],
+# [P2], STOP ends on P2, silent; a chain P2 P3 made by hand then plays from its first, P2, as the silent P2 ends (the
+# silent pattern does not count as the chain's first), then P3.
+# keys: white 2 = 0x4, 3 = 0x10. (a first press only closes the opening; HOME twice: SETTINGS, ALGORITHM on CLOCK: EXT)
+50 btn 8
+200 btn 8
+250 btn 8
+300 enc 1 1
+400 btn 8
+410 expect 0 view
+500 list 1x1 2x1 stop
+1000 clock 120 960
+1500 midi 0xFA 0 0
+5700 expect 1 ended
+6000 keys 0x4
+6050 keys 0x14
+6100 keys 0x4
+6150 keys 0
+6200 expect 2 chain
+7600 expect 0 ended
+7600 expect 1 pat
+9600 expect 2 pat
+9800 end
