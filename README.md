@@ -186,6 +186,10 @@ Where things are: `firmware/src/drumtonic.c` is the entry point. `app_fm1.c` and
 `drum.c` is the sound engine. The chip's rules are in [docs/RULES.md](docs/RULES.md), and the platform's own
 documentation is in [docs/dinghy/](docs/dinghy/DINGHY.md).
 
+Writing your own firmware for the FM-1? What was learned about the instrument and its CPU while making Drumtonic
+(the rules that keep a unit alive, the hardware, the two cores, audio, storage, the mistakes already made, the open
+questions) is in **[docs/FM1-DEV-GUIDE.md](docs/FM1-DEV-GUIDE.md)**.
+
 ## License and credits
 
 GPL-3.0-only: you may change and share Drumtonic. Whoever gets a firmware built from it gets its source too. If you
