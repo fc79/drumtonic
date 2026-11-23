@@ -4,7 +4,7 @@ What was learned about the FM-1 and its chip, the JieLi AC791N, while writing
 [Drumtonic](https://github.com/fc79/drumtonic), an open-source drum machine firmware for it. Written for someone who
 wants to write an FM-1 firmware and has never seen that code.
 
-- **State:** 2026-11-22, Drumtonic 0.9.6. By fc79.
+- **State:** 2026-11-23, Drumtonic 0.9.6. By fc79.
 - **Scope:** the FM-1. Its sister keyboard, the SMK-37 (same chip, same boot code), is mentioned only where a fact
   was learned there. For the SMK-37 itself read the [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) guide.
 - **It is not official.** Nothing here comes from M-VAVE or JieLi documentation for this product. M-VAVE's own
@@ -231,6 +231,10 @@ Other load addresses: the SPL at `0x01C02000` **[stock]**; the update loader at 
   **[code]**
 - **A constant that looks like a ROM address fails the build.** `-32767 << 7` is `0xFFC00080`. Rearrange the
   arithmetic so the value never appears as a constant. **[code]**
+- **So does a number that looks like a register.** This check reads the source, not the listing: outside `hal/`
+  it refuses any hex literal that falls in a register window, whatever it is for. A test value `0x00040003` was
+  refused because `0x40000-0x43FFF` is the flash controller's window. Change the number, not the check.
+  **[code]**
 - **Compute constants on your computer** and write them into the source as numbers. **[code]**
 - **More in the core than the build uses?** Not a newer level. The stock apps of the FM-1 and the SMK-37 (V15
   and V16) disassemble with no unknown instruction in their code under plain `-mcpu=r3`, the build's own
@@ -241,8 +245,48 @@ Other load addresses: the SPL at `0x01C02000` **[stock]**; the update loader at 
   level does hold, and the compiler never writes: a float multiply-add and multiply-subtract (the stock firmware
   contains them **[stock]**), a saturating add, packed 8- and 16-bit forms and a CORDIC instruction, `copex`
   (JieLi's SDK uses them for this chip in hand-written assembly **[sdk]**). The assembler takes all of them with
-  the build's flags **[host]**; nobody here has run one. Compiler options do not reach them: `-mcpu=r4`,
-  `-mfprev2`, `-msimd`, `-mcordic` and `-minstrev3` leave every float loop as it is. **[host]**
+  the build's flags **[host]**. Compiler options do not reach them: `-mcpu=r4`, `-mfprev2`, `-msimd`, `-mcordic`
+  and `-minstrev3` leave every float loop as it is. **[host]**
+- **Those hand-only instructions run on an FM-1.** Tried on one unit (2026-11-22) in a development build with a
+  hidden test page: each instruction alone in a small function of the hardware layer, started by hand from the
+  main loop more than 30 s after power-on, audio interrupt and second core running as always. Every result is a
+  value compared with one worked out on a computer.
+
+  | Instruction | On the unit | |
+  | --- | --- | --- |
+  | Float multiply-add and multiply-subtract (`acc += a * b`, `acc -= a * b`) | Right on 16 of 16 inputs. **It rounds twice**, the product and then the sum, exactly like `acc + a * b` in C: it is not a fused multiply-add | **[unit]** |
+  | 32-bit saturating add | Right on 13 of 13 inputs, 7 of them past a limit | **[unit]** |
+  | Packed forms: byte unpack (signed) and pack | 9 of 9 as expected: four bytes become four sign-extended 16-bit lanes, low byte first, and pack gives the word back. One pair out of a large group; the rest is untried | **[unit]** |
+  | CORDIC, `copex` | Works, by the numbering of the SDK's fast-maths functions (next point) | **[unit]** |
+
+  The check that an illegal instruction really faults on this chip was left out, so "it did not crash" proves
+  nothing here; only the values do. Hand-written assembly belongs in `hal/`: the build refuses inline assembly
+  anywhere else. **[code]**
+- **What `copex` computes.** One instruction takes two words (low, high) and a number that chooses the function.
+  JieLi's libraries hold two different numberings; the unit follows the one of the SDK's fast-maths functions
+  ([`math_fast_function.h`](https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK/blob/AC79NN_SDK_V1.2.1_2023-12-13/include_lib/driver/cpu/wl82/asm/math_fast_function.h)),
+  read from the prebuilt libraries on a computer. **[sdk]** **[host]** A float goes in and comes out as its 32
+  bits. The numbers below ran on the unit, 15 inputs in all; "steps" are steps of a float's last bit. **[unit]**
+
+  | Number | Function | In | Out, and what the unit gave |
+  | --- | --- | --- | --- |
+  | 11 | Float add | x low, y high | Low word. Exact |
+  | 12 | Float subtract | | Low word: **high minus low**. Exact |
+  | 13, 14 | Float to integer, integer to float | Low word | Low word. Exact |
+  | 16 | Sine and cosine together | Low word: the angle **divided by pi** | Sine high, cosine low. Exact to within 4 steps |
+  | 18 | Length of (x, y) | x low, y high | Low word, to be multiplied by 0.6072530. Exact for (3, 4). The high word held the angle divided by pi |
+  | 22 | Exponential | Low word | Low word. Within 1 step |
+  | 23 | Natural logarithm | Low word | Low word. Within 2 steps |
+  | 24 | Square root | Low word | Low word, to be multiplied by 1.2074971. Exact to within 1 step |
+  | 25 | Float multiply | x low, y high | Low word. Exact |
+  | 26 | Float divide | | Low word: **high over low**. One step under the nearest float |
+  | 7 | Logarithm of a fixed-point number | Value low, its scale high | Value low, with 24 fractional bits; the scale (24) high |
+
+  Fifteen inputs are a spot check, not a measurement; the one readable SDK source that uses `copex` (for a
+  vector's length, in the other numbering, marked as not in use) gives its result 22 bits of precision.
+  **[sdk]** The use for a drum machine is the one the EQ designer in JieLi's chip library makes of it: filter
+  coefficients worked out in the main loop when a knob moves, in place of tables. **[sdk]** **[host]** Untried:
+  the other fixed-point functions, `copex` in the audio interrupt or on the second core, and what it costs.
 
 ### 3.3 Cache and XIP
 
@@ -348,7 +392,8 @@ channels and its reverb there. What that took:
   restarts: two cores or none. Some comments in the source still describe the old fallback; the code restarts.
   **[code]** **[unit]** (the restart policy ran on the unit as version 0.3 and later)
 - **In the stock firmware:** V15 gives the second core one job, a conversion of the audio to 24 bits. V16 carries a
-  loop for FFT jobs that nothing in the app seems to call. **[stock]** **[inferred]**
+  loop for FFT jobs that drives the chip's hardware FFT unit (it names the unit's control register and uses the
+  SDK's configuration words) **[stock]**; nothing in the app seems to call it. **[stock]** **[inferred]**
 
 ### 3.8 The guards and the crash screen
 
@@ -391,8 +436,16 @@ Two lessons about measuring:
 
 - **Speed on the computer does not predict speed on the chip.** A rewrite of the voice loop was 20 % faster on the
   host and gained nothing on the FM-1 (`-Os`). It was reverted. **[unit]**
-- **A peak meter cannot show a small gain.** Measuring the chip's load needs an average over many blocks; this has
-  not been built. **[unit]**
+- **A peak meter cannot show a small gain.** Measuring the chip's load needs an average over many blocks. No
+  release has one; a development build shows the effects' mean time a render in microseconds, and gave the
+  figures of the next point. **[unit]**
+- **Fewer instructions did not mean less time.** Drumtonic's effects (reverb, delay, master) were built a second
+  time with the float multiply-add of section 3.2 written by hand: 58 of them, 2 % fewer instructions, the same
+  samples on the computer **[host]**. On the unit that copy ran in the audio interrupt and on the second core
+  without a fault, sounded the same, and was **slower**: about 3,113 us a render against 3,055 us for plain C
+  (1.9 %), twelve readings with a switch turned back and forth, each setting steady within 7 us. One build, one
+  unit, one pattern. **[unit]** Whether the instruction costs more than a multiply and an add, or the second copy
+  of the code just sits less well in memory, is not known.
 
 ---
 
@@ -764,20 +817,29 @@ Sources: 1-5, 7, 12, 15, 17, 19, 20 **[unit]**; 6, 8 **[host]**; 9-11, 13-14, 18
 - **Tiny (subnormal) floats.** Whether the FPU traps on them, slows down or does not care is not known. The SDK's
   fault table for this chip names five FPU causes, "tiny" among them, but not whether they are switched on.
   **[sdk]** Drumtonic avoids them (integer delay lines). A float reverb or filter left to decay will meet them.
-- **Multiply and add in one step.** The compiler never writes the float multiply-add instruction, in any mode
-  tried, so compiled C cannot differ from the computer for that reason. **[host]** `-ffp-contract=off` still
-  matters for the host builds (section 5). Whether the instruction, written by hand, rounds once or twice is not
-  known.
-- **The newer instructions.** The stock firmware needs nothing beyond `-mcpu=r3` (section 3.2). Still open:
-  whether the chip executes the instructions that only hand-written assembly reaches (float multiply-add,
-  saturating add, packed forms, CORDIC `copex`) and what they cost; whether the multiply-add rounds once or
-  twice; whether the chip has hardware `double` (`fprev2`) at all, for which nothing was found. Never run here.
-  A test on a unit must not run at boot (two failed starts send the unit to the rescue), should first show that
-  an illegal instruction really brings up the crash screen, and should compare results with values computed on a
-  computer: a quiet screen proves nothing.
-- **The hardware FFT and vector unit.** The SDK's headers for this chip describe one, with registers (`JL_FFT`):
-  FFTs up to 2,048 points and multiply-accumulate over arrays. **[sdk]** Not studied. The loop for FFT jobs in
-  stock V16 (section 3.7) may belong to it. **[inferred]**
+- **Multiply and add in one step.** Mostly answered. The compiler never writes the float multiply-add
+  instruction, in any mode tried **[host]**, and written by hand it rounds twice, like plain C (section 3.2)
+  **[unit]**: the chip gives no reason for its samples to differ from the computer's. `-ffp-contract=off` is
+  there for the host's own compiler (section 5). Still open: why the multiply-add made Drumtonic's effects
+  slower (section 3.9), and whether it is faster anywhere.
+- **The hand-only instructions** (section 3.2). The stock firmware needs nothing beyond `-mcpu=r3`, and the
+  float multiply-add, the saturating add, one packed pair and `copex` gave right values on one unit. Still open:
+  what each costs; the saturating add, the packed forms and `copex` inside the audio interrupt or on the second
+  core (only the multiply-add ran there); the other packed forms, the 16-bit multiply-accumulate ones above all;
+  `copex`'s error over its whole range, whether an interrupt may cut into it, and its fixed-point functions other
+  than the logarithm; whether the chip has hardware `double` (`fprev2`) at all, for which nothing was found.
+  Also open: whether an illegal instruction really brings up the crash screen. That control was never run, so a
+  test must compare results with values computed on a computer (a quiet screen proves nothing), and must not run
+  at boot (two failed starts send the unit to the rescue).
+- **The hardware FFT and vector unit.** JieLi's SDK has a driver for one on this chip (`JL_FFT`, four registers
+  at `0x01EE0400`): FFTs of 10 to 2,048 points on 32-bit integers, and arithmetic over whole arrays of 8-, 16- or
+  32-bit integers (add, multiply, multiply-accumulate, dot product, clip). No floats. The driver hands it a block
+  of words in RAM, polls a "done" bit, and lets one user in at a time; the unit reads and writes the RAM by
+  itself. **[sdk]** The answers JieLi's own self-test stores are the plain transform to within a few counts, not
+  bit-exact. **[sdk]** **[host]** Stock V16 carries code that drives it and nothing that calls that code (section
+  3.7), so the stock firmware does not show that it works on an FM-1. **[stock]** **[inferred]** Never run
+  here. Also open: whether it needs a clock or power switch set first, and whether the write guards see what the
+  unit itself writes.
 - **The cache:** size, policy, the cost of a miss, how much XIP really costs against RAM code.
 - **Which line `-O2` breaks** in the USB code.
 - **Cycle costs.** There are instruction counts and load percentages, but no table of what a multiply, a divide, a
@@ -806,7 +868,8 @@ Sources: 1-5, 7, 12, 15, 17, 19, 20 **[unit]**; 6, 8 **[host]**; 9-11, 13-14, 18
 
 **Tools**
 
-- **A real load meter** (average, per stage) on the chip.
+- **A real load meter** (average, per stage) on the chip. So far only a mean time for the effects, in a
+  development build (section 3.9).
 - **M-VAVE's "FM-1 Open" workbench:** how it relates to this platform, and whether firmwares built with it can share
   the flash safely with the family's.
 
