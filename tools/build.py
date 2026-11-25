@@ -177,8 +177,11 @@ def build_loader():
 # ---- app
 
 def build_app():
+    ver = VERSION or "0.0"
+    if "-DPERF_TEST=1" in os.environ.get("DINGHY_DEFS", "").split():   # the timing build (firmware/src/perf.h) says so
+        ver += "-PERF"                                                  # wherever its version shows: never a release
     flags = [*CFLAGS, *APP_FPU[BOARD], *BOARD_DEFS[BOARD], "-Ifirmware/hal", "-Ifirmware/src", "-Ifirmware/gen", f'-DFELUCCA_ID="{PRODUCT}"',
-             f'-DAPP_VER="{VERSION or "0.0"}"']
+             f'-DAPP_VER="{ver}"']
     if BOARD == "smk37":
         if not re.fullmatch(r"[A-Z0-9]{1,7}", DATA_FAMILY):
             raise SystemExit("DATA_FAMILY: 1..7 of A-Z 0-9")

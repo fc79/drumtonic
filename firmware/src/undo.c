@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* The FM-1's undo, one level (FM1-INTERFACCIA.md): HOME + OCT- goes back to the state before the last change, HOME +
  * OCT+ to the state the last OCT- left; each keeps the state it leaves for the other, so a change made after an undo
- * does not lose what was undone. What it covers: the patterns (steps, lengths, rate, swing), the lanes (motion, p-locks,
- * conditions, micro timing) and QUANT, the LFOs, the kit playing (sounds, names) and its sends and effects (kitx). Not the tempo,
- * mute, solo, the settings, nor anything written to the flash (SAVE, the kits' slots, the library).
+ * does not lose what was undone. What it covers: the patterns (steps, lengths, rate, swing), the lanes (motion,
+ * p-locks, RAMP), the marks (conditions, micro timing, ratchets) and QUANT, the LFOs, the kit playing (sounds,
+ * names) and its sends and effects (kitx). Not the tempo, mute, solo, the settings, nor anything written to the flash
+ * (SAVE, the kits' slots, the library).
  *
  * Three copies in the pool: OCT-'s, OCT+'s and the work one (the state before the change in progress). A change is
  * found by comparing: an input event that starts a gesture copies the state into the work copy; if the state then
@@ -14,6 +15,7 @@
 typedef struct {
     seq_song_t song;
     lane_t lanes[NLANE];
+    uint32_t marks[NMARK], nmark;               /* (the marks in use, as words: not where they sit in the table) */
     lfo_t lfos[SEQ_NPAT][NLFO];
     uint8_t quant[SEQ_NPAT][DRUM_NCH];          /* (QUANT, motion.c) */
     drum_kit_t kit;
@@ -35,18 +37,34 @@ static struct {
 static void undo_take(uint32_t i)
 {
     undo_st_t *d = &undo_st[i % 3u];
+    uint32_t k;
     memcpy(&d->song, &seq_song, sizeof seq_song);
     memcpy(d->lanes, lanes, sizeof lanes);
+    for (k = d->nmark = 0; k < MARK_NSLOT; k++) if (marks[k] && d->nmark < NMARK) d->marks[d->nmark++] = marks[k];
     memcpy(d->lfos, lfos, sizeof lfos);
     memcpy(d->quant, mot_quant, sizeof mot_quant);
     d->kit = kit;
     memcpy(d->x, kitx, SND_NX);
     d->kc = kit_cur;
 }
+static uint32_t undo_has(const undo_st_t *d, uint32_t key)   /* the copy has a mark with this key */
+{
+    uint32_t k;
+    for (k = 0; k < d->nmark; k++) if ((d->marks[k] & MARK_KEY) == key) return 1;
+    return 0;
+}
+static uint32_t undo_marks_same(const undo_st_t *d)   /* the same marks (wherever they sit in the table) */
+{
+    uint32_t k;
+    if (d->nmark != mark_n) return 0;
+    for (k = 0; k < d->nmark; k++) if (mark_find(d->marks[k] & MARK_KEY, 0) != d->marks[k]) return 0;
+    return 1;
+}
 static uint32_t undo_same(uint32_t i)
 {
     const undo_st_t *d = &undo_st[i % 3u];
     return !memcmp(&d->song, &seq_song, sizeof seq_song) && !memcmp(d->lanes, lanes, sizeof lanes) &&
+           undo_marks_same(d) &&
            !memcmp(d->lfos, lfos, sizeof lfos) && !memcmp(d->quant, mot_quant, sizeof mot_quant) && !memcmp(&d->kit, &kit, sizeof kit) && !memcmp(d->x, kitx, SND_NX) && d->kc == kit_cur;
 }
 static void undo_put(uint32_t i)                /* copy i becomes the state: as the main loop's edits do it */
@@ -66,6 +84,10 @@ static void undo_put(uint32_t i)                /* copy i becomes the state: as 
             __asm__ volatile("" ::: "memory");
             lanes[k].used = used;
         }
+    for (k = 0; k < MARK_NSLOT; k++)            /* the marks: the ones the copy has not go, then the copy's are put,
+                                                 * as the edits do it (the search: NMARK x NMARK at most, an undo's) */
+        while (marks[k] && !undo_has(d, marks[k] & MARK_KEY)) mark_del_at(k);
+    for (k = 0; k < d->nmark; k++) mark_put(d->marks[k] & MARK_KEY, d->marks[k]);
     memcpy(lfos, d->lfos, sizeof lfos);
     memcpy(mot_quant, d->quant, sizeof mot_quant);
     if (d->kc == kit_cur) {                     /* the kit playing: as it was */

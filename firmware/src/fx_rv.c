@@ -17,8 +17,9 @@
  *            stays open (60 .. 700 ms), then it shuts in 8 ms (the 1980s gated snare)
  *
  * One memory for all five (rv_mem: only one plays); a change of TYPE fades the tail out in 30 ms, clears the memory and
- * starts the new one (rv_isr). SIZE and PRE DLY glide (a change stretches the space instead of clicking). The ISR (or
- * the second core: fx_c1_job) runs rv_render; rv_params (main, or the ISR as a pattern brings its kit) sets rv_p. */
+ * starts the new one (rv_isr). SIZE and PRE DLY glide (a change stretches the space instead of clicking). fx_reverb
+ * runs it, on the second core a render late (fx.c fx_c1_late), or in the ISR; rv_params (main, or the ISR as a pattern
+ * brings its kit) sets rv_p. */
 
 #define RV_PRE_N 4416                           /* PRE DLY's line: 100 ms and a little (14 bits) */
 #define RV_MEM 25600                            /* the types' memory, 16-bit words (51 KB) */
@@ -98,7 +99,8 @@ static void rv_params(const uint8_t *x)         /* x: a kitx's effects */
 }
 
 /* ---- the ISR's side */
-static float rv_rd(const int16_t *b, int32_t len, int32_t w, float d)   /* d samples behind w (1 .. len - 1), interpolated */
+static inline __attribute__((always_inline)) float rv_rd(const int16_t *b, int32_t len, int32_t w, float d)   /* d samples behind
+                                                 * w (1 .. len - 1), interpolated (inline: up to 22 a sample, 2026-11-23) */
 {
     float rp = (float)w - d, fr;
     int32_t i0, i1;
@@ -260,8 +262,11 @@ static void rv_gains(float sz)                  /* each line's gain: down 60 dB 
 static void fx_reverb(const int32_t *bus, float *l, float *r, uint32_t n)
 {
     const float damp = fx_p.rv_damp, fb = fx_p.rv_fb, lvl = fx_p.rv_lvl, hpa = fx_p.rv_hpa;
-    const int32_t want = rv_p.type, pre_on = rv_p.pre > 0.0f || rv.pcur > 0.0f;
-    const float szt = rv_p.size, md = rv_p.mod, wd = rv_p.width, pt = rv_p.pre;
+    const float pt = fx_late ? (rv_p.pre > 256.0f ? rv_p.pre - 256.0f : 0.0f) : rv_p.pre;   /* the late reverb (fx.c) comes
+                                                 * 256 frames later: its PRE DLY that much shorter, so from 6 ms (265
+                                                 * frames) it lands where it did (the user's choice, 2026-11-23) */
+    const int32_t want = rv_p.type, pre_on = pt > 0.0f || rv.pcur > 0.0f;
+    const float szt = rv_p.size, md = rv_p.mod, wd = rv_p.width;
     uint32_t i, any = 0;
     int32_t quiet, qlim;
     if (!rv_ready) return;

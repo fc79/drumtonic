@@ -1,7 +1,8 @@
 # Drumtonic on the FM-1: REC FREE (SETTINGS > REC) and QUANT (STEPS, knob 4). At 60 BPM (a step 250 ms, a 24th 10.4 ms)
 # LT (pattern 1: empty) is played by hand and by MIDI while recording: each hit on the step nearest, with its micro timing.
-# Then QUANT pulls it to the grid as it plays, the lane unchanged; SAVE writes QUANT into the lane and puts it back to 0;
-# HOME + OCT- (undo) gives the timing as recorded and QUANT back.
+# Then QUANT pulls it to the grid as it plays, the lane unchanged; SAVE keeps QUANT as it is, with the pattern (the
+# user's choice, 2026-11-23: until then SAVE wrote it into the lane); GLO + QUANT puts it to 0, HOME + REC (the pattern
+# as saved) brings the saved QUANT back.
 # buttons: 0 OCT- 1 OCT+ 3 SEL 7 GLO 8 HOME 9 SAVE 11 SEQ 12 PLAY 13 REC; encoders: 0 SELECT 2-5 KNOB 1-4
 # LT: black 5 = key bit 13 (0x2000), MIDI note 41
 50 btn 8
@@ -59,23 +60,25 @@
 9550 expect 4 chhits 5
 9950 expect 4 chhits 5
 9990 expect 5 chhits 5
-# SAVE: QUANT into the lane, QUANT 0; the timing played the same
+# SAVE: QUANT saved as it is; the lane and the timing played unchanged
 10500 btn 9
-11000 expect 0 quant 0 5
+11000 expect 50 quant 0 5
 11000 expect 3 micro 0 5 2
-11000 expect 131 lane 0 5 27 2
+11000 expect 133 lane 0 5 27 2
 11000 expect -3 micro 0 5 4
 11000 expect 2 micro 0 5 10
-# undo: the timing as recorded and QUANT 50 again
-11500 btndown 8
-11550 btn 0
-11600 btnup 8
-11700 expect 50 quant 0 5
+# GLO + QUANT: back to 0 %, the timing as recorded
+11500 btndown 7
+11550 enc 5 1
+11600 btnup 7
+11700 expect 0 quant 0 5
+11700 expect 5 micro 0 5 2
 11700 expect 133 lane 0 5 27 2
-# GLO + QUANT: back to 0 %, the lane as recorded
-12000 btndown 7
-12050 enc 5 1
-12100 btnup 7
-12200 expect 0 quant 0 5
-12200 expect 5 micro 0 5 2
+# HOME + REC: the pattern as saved, QUANT 50 again
+12000 btndown 8
+12050 btn 13
+12100 btnup 8
+12200 expect 50 quant 0 5
+12200 expect 3 micro 0 5 2
+12200 expect 133 lane 0 5 27 2
 12300 end

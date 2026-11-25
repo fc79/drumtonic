@@ -1,0 +1,142 @@
+# Drumtonic on the FM-1: RATCH and RAMP on knobs 3 and 4 (docs/dev/RATCHET-KNOB.md). On STEPS, a step held on one
+# channel: knob 3 is RATCH (its hits, 1..8, one a click, no round), knob 4 RAMP (-100 DOWN 100 % .. 0 FLAT .. +100 UP
+# 100 %, 1 % a click, spun up to x6, no round; it stops at FLAT on its way across, a click within 0.35 s stays there;
+# with one hit the band says RATCH FIRST); let go, they are REPEAT and QUANT again. Hits back to 1 drop RAMP; ARP with
+# the step held still goes round, 1 .. 8 then 1. Then BD plays them (60 BPM: a step 250 ms, PLAY at 4500: step n at
+# 4500 + 250 (n - 1)): step 3 4 hits DOWN 50 % (96 80 64 48), step 7 accented 3 hits UP 100 % (1 64 127), step 9 7 hits
+# DOWN 100 % (96 80 64 48 33 17 1, its RAMP undone and redone): each hit's velocity as sent on MIDI (hitvel), midway
+# between two hits. RAMP's values (ramp): -100 .. +100, FLAT 0. Shots: the box "+1%" .. "-100%", "FLAT", the bubble
+# "UP 87%", "FLAT", "DOWN 100%", "DOWN 50%", the bar from the middle.
+# knob kinds (knob 0..3, ui_fm1.c R_*): MICRO 8, REPEAT 9, QUANT 10, RATCH 11, RAMP 12; msg4: the band's first 4
+# letters ("RATC" = 0x52415443)
+# buttons: 0 OCT- 1 OCT+ 8 HOME 10 ARP 11 SEQ 12 PLAY; encoders: 2-5 KNOB 1-4 (a click on a knob more than 150 ms after
+# its last: one step, not sped up)
+# white 3 = 0x10, white 7 = 0x800, white 9 = 0x4000, black 11 (accent) = 0x2000000 (a first press only closes the
+# opening)
+50 btn 8
+100 enc 2 -60
+150 expect 60 bpm
+200 btn 11
+250 expect 8 knob 1
+250 expect 9 knob 2
+250 expect 10 knob 3
+300 keys 0x10
+320 expect 8 knob 1
+320 expect 11 knob 2
+320 expect 12 knob 3
+325 shot
+330 enc 5 1
+340 expect 0x52415443 msg4
+340 expect 0 ramp 0 0 2
+340 expect 1 ratch 0 0 2
+350 enc 4 1
+360 expect 2 ratch 0 0 2
+370 enc 4 1
+380 enc 4 1
+390 enc 4 1
+400 expect 5 ratch 0 0 2
+410 enc 4 10
+420 expect 8 ratch 0 0 2
+430 enc 4 1
+440 expect 8 ratch 0 0 2
+600 enc 5 1
+610 expect 1 ramp 0 0 2
+800 enc 5 49
+810 expect 50 ramp 0 0 2
+1000 enc 5 60
+1010 expect 100 ramp 0 0 2
+1200 enc 5 -1
+1210 enc 5 -1
+1220 enc 5 -1
+1230 expect 87 ramp 0 0 2
+1240 shot
+1400 enc 5 -100
+1410 expect 0 ramp 0 0 2
+1420 enc 5 -1
+1430 expect 0 ramp 0 0 2
+1440 shot
+1800 enc 5 -1
+1810 expect -1 ramp 0 0 2
+2000 enc 5 -99
+2010 expect -100 ramp 0 0 2
+2020 shot
+2200 enc 4 -10
+2210 expect 1 ratch 0 0 2
+2210 expect 0 ramp 0 0 2
+2220 enc 4 3
+2230 expect 4 ratch 0 0 2
+2230 expect 0 ramp 0 0 2
+2400 btn 10
+2410 btn 10
+2420 btn 10
+2430 btn 10
+2440 expect 8 ratch 0 0 2
+2450 btn 10
+2460 expect 1 ratch 0 0 2
+2460 expect 0 ramp 0 0 2
+2470 btn 10
+2480 btn 10
+2490 btn 10
+2500 expect 4 ratch 0 0 2
+2700 enc 5 -50
+2710 expect -50 ramp 0 0 2
+2720 shot
+2800 keys 0
+2810 expect 1 step 0 0 2
+2810 expect 9 knob 2
+2810 expect 10 knob 3
+3000 keys 0x2000000
+3050 keys 0x2000800
+3100 keys 0x2000000
+3150 keys 0
+3160 expect 2 step 0 0 6
+3200 keys 0x800
+3210 enc 4 2
+3400 enc 5 100
+3410 expect 3 ratch 0 0 6
+3410 expect 100 ramp 0 0 6
+3420 keys 0
+3430 expect 2 step 0 0 6
+3500 keys 0x4000
+3510 enc 4 6
+3700 enc 5 -100
+3710 expect 7 ratch 0 0 8
+3710 expect -100 ramp 0 0 8
+3720 keys 0
+3730 expect 1 step 0 0 8
+# undo (HOME + OCT-) takes step 9's RAMP back (the last change), redo (HOME + OCT+) puts it again
+3800 btndown 8
+3810 btn 0
+3820 btnup 8
+3830 expect 0 ramp 0 0 8
+3830 expect 7 ratch 0 0 8
+3900 btndown 8
+3910 btn 1
+3920 btnup 8
+3930 expect -100 ramp 0 0 8
+3930 expect 7 ratch 0 0 8
+4490 expect 0 chhits 0
+4500 btn 12
+4600 expect 127 hitvel 0
+4600 expect 1 chhits 0
+5031 expect 96 hitvel 0
+5094 expect 80 hitvel 0
+5156 expect 64 hitvel 0
+5219 expect 48 hitvel 0
+5219 expect 5 chhits 0
+5600 expect 96 hitvel 0
+6042 expect 1 hitvel 0
+6125 expect 64 hitvel 0
+6208 expect 127 hitvel 0
+6208 expect 9 chhits 0
+6518 expect 96 hitvel 0
+6554 expect 80 hitvel 0
+6589 expect 64 hitvel 0
+6625 expect 48 hitvel 0
+6661 expect 33 hitvel 0
+6696 expect 17 hitvel 0
+6732 expect 1 hitvel 0
+6732 expect 16 chhits 0
+7100 expect 96 hitvel 0
+7100 expect 17 chhits 0
+7200 end

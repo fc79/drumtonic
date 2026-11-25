@@ -1,3 +1,3 @@
-# Drumtonic on the FM-1: after tests/flash/drumtonic_fm1_lanesfull.txt (same HOST_FLASH): all 176 lanes saved and loaded
-50 expect 176 lanes
+# Drumtonic on the FM-1: after tests/flash/drumtonic_fm1_lanesfull.txt (same HOST_FLASH): all 120 lanes saved and loaded
+50 expect 120 lanes
 200 end

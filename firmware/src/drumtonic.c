@@ -22,6 +22,7 @@
 static void app_idle(void);
 #define LCD_IDLE app_idle
 #include "platform.c"
+#include "perf.h"                               /* (PERF_TEST: where the audio's time goes; else empty) */
 
 static void seq_block(void);
 #define DRUM_BLOCK_HOOK seq_block               /* the sequencer's clock, in the audio ISR */
@@ -39,6 +40,7 @@ static void mot_step(uint32_t pat, uint32_t st);
 static uint32_t mot_cond(uint32_t pat, uint32_t ch, uint32_t st);
 static void mot_tick(void);
 static void fx_render(int32_t *out, uint32_t n);
+static void fx_late_start(void);
 #define SEQ_STEP_HOOK(pat, st) mot_step(pat, st)   /* the lanes, the conditions: motion.c */
 #define SEQ_COND(pat, ch, st) mot_cond(pat, ch, st)
 static uint32_t mot_cond_at(uint32_t pat, uint32_t ch, uint32_t st);
@@ -61,10 +63,13 @@ static void app_audio(int32_t *out, uint32_t n)
 #ifndef DINGHY_HOST
     uint32_t t0 = fm1_ticks(), us;
 #endif
+    PF_START();
 #if !BOARD_SMK37
+    fx_late_start();                            /* the reverb of the last render, on core 1 from now (fx.c) */
     seq_at_render();                            /* (the time line: this render's first frame, now) */
     mot_tick();                                 /* the lanes' glides, the LFOs, the kit's changes (motion.c) */
 #endif
+    PF_LAP(PF_SEQ);
     drum_render(out, n);
 #if !BOARD_SMK37
     fx_render(out, n);                          /* the reverb, the delay, the master (fx.c) */
@@ -73,6 +78,7 @@ static void app_audio(int32_t *out, uint32_t n)
     us = (fm1_ticks() - t0) / FM1_TICKS_PER_US;
     if (us > cpu_us_max) cpu_us_max = us;
 #endif
+    PF_END();
 }
 
 /* ---- the kit playing, and what every board keeps */

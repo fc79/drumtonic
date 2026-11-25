@@ -18,6 +18,7 @@ run() { echo "== $1"; shift; "$@" || fail=1; }
 
 [ -f build/drumtonic.fwsc ] || { echo "run ./build.sh first"; exit 1; }
 
+run "The drum engine alone (tests/drum_render.c): every kit's channels, choke, the pitch's top, DECLICK, the library, DIST's makeup" sh tests/run_drums.sh
 run "FM-1 app on the host: the default script plays, screens and sound" sh tests/run_host.sh
 run "SMK-37 app on the host: the default script" env BOARD=smk37 sh tests/run_host.sh
 run "FM-1 MIDI: USB, the TRS jack, a clock, the channel" sh tests/run_host.sh tests/scripts/midi.txt
@@ -46,8 +47,11 @@ rm -f build/host/restore.flash
 run "Drumtonic, FM-1: a restore over MIDI: the question (HOME no, 60 s no), data before yes refused, a changed record fails it, a full restore empties what the backup had empty and restarts" env HOST_FLASH=build/host/restore.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_restore.txt
 run "Drumtonic, FM-1: after the restore's restart, the backup's saves load (tempo, no library)" env HOST_FLASH=build/host/restore.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_restore2.txt
 rm -f build/host/lanes.flash
-run "Drumtonic, FM-1: all 176 motion lanes used (pastes), one more is MOTION FULL, SAVE (the record fits its 5 sectors)" env HOST_FLASH=build/host/lanes.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_lanesfull.txt
-run "Drumtonic, FM-1: the 176 lanes load after a restart" env HOST_FLASH=build/host/lanes.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_lanesfull2.txt
+run "Drumtonic, FM-1: all 120 motion lanes used (pastes), one more is MOTION FULL, SAVE (the record fits its 5 sectors)" env HOST_FLASH=build/host/lanes.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_lanesfull.txt
+run "Drumtonic, FM-1: the 120 lanes load after a restart" env HOST_FLASH=build/host/lanes.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_lanesfull2.txt
+run "Drumtonic, FM-1: the step marks (conditions, micro timing, ratchets): 896, MOTION FULL only past them, a step cleared, a pattern cleared and undone, a channel pasted (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_marks.txt
+$CC -DDINGHY_HOST -Ifirmware/hal -Ifirmware/src -Ifirmware/gen -o "$OUT/marks_test" tests/marks_test.c
+run "Drumtonic, FM-1: the marks' table against a model of every step (random edits, full, a search between any two stores); the word's bits, RAMP a lane beside it, RAMP's velocities; the record SNG7, SNG6 and SNG5 (their RAMPs into lanes) and SNG4 converting, and SNG3/2/1 loading as marks and QUANT" "$OUT/marks_test"
 rm -f build/host/songs.flash
 run "Drumtonic, FM-1: songs written with the keys and saved with SAVE (its light), in the settings' record (expect)" env HOST_FLASH=build/host/songs.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_song_save.txt
 run "Drumtonic, FM-1: the songs load after a restart, SAVE dim (expect, shot)" env HOST_FLASH=build/host/songs.flash sh tests/run_host.sh tests/flash/drumtonic_fm1_song_save2.txt
@@ -62,7 +66,11 @@ run "Drumtonic, FM-1: a long message stays in its buffer (black 1 picks BD after
 run "Drumtonic, FM-1: the chosen track's black key: blinking stopped, lit playing on SEQ, EDIT, ENV (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_chled.txt
 run "Drumtonic, FM-1: playing, the chosen track's black key goes dim as it plays (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_chled_hit.txt
 run "Drumtonic, FM-1: black keys mute only on LIVE, pick the channel elsewhere (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_mute.txt
-run "Drumtonic, FM-1: a step held + ARP sets its ratchet; the step plays its hits (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_ratchet.txt
+run "Drumtonic, FM-1: a step held + ARP sets its ratchet (1 .. 8, then 1); the step plays its hits (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_ratchet.txt
+run "Drumtonic, FM-1: ratchets of 5, 7 and 8 hits: hit k at k/n of the step, 5 and 7 too (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_ratchet8.txt
+run "Drumtonic, FM-1: a step held, knobs 3 and 4 are RATCH and RAMP (RAMP -100..+100 %, sped up, a stop at FLAT; RATCH FIRST, no round, ARP still round, undo); RAMP DOWN / UP velocities on MIDI (expect, shots)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_ratch_knob.txt
+run "Drumtonic, FM-1: a ratchet with a RAMP played late (micro timing) keeps its RAMP (hitvel 127 85 43 1)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_ramp_late.txt
+run "Drumtonic, FM-1: GLO held with a step held copies it (its guide: COPY STEP 3); pasted on another channel and onto itself, with its ratchet and RAMP" sh tests/run_host.sh tests/scripts/drumtonic_fm1_step_copy.txt
 run "Drumtonic, FM-1: a late step's ratchet runs over the step's end (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_ratchet_micro.txt
 run "Drumtonic, FM-1: a ratchet goes first: the next hit on its channel does not cut it (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_ratchet_first.txt
 run "Drumtonic, FM-1: a part's length changed by PRESETS: back in step with the pattern (expect)" sh tests/run_host.sh tests/scripts/drumtonic_fm1_partlen_align.txt

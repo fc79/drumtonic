@@ -20,7 +20,9 @@
                                                  * from it it came, in 24ths (+ late, - early; -12..12) */
 #define SEQ_REC_MICRO(pat, ch, st, m) ((void)0)
 #endif
-#ifndef SEQ_RATCH                               /* ratchets: a step's hits, 1..4, evenly through it */
+#ifndef SEQ_RATCH                               /* ratchets: a step's hits, 1..8, evenly through it | its RAMP << 8, a
+                                                 * signed byte, -100 (DOWN 100 %) .. +100 (UP 100 %), 0 FLAT (motion.h
+                                                 * RAMP_MAX: their velocities) */
 #define SEQ_RATCH(pat, ch, st) 1u
 #endif
 static const uint8_t SEQ_TPS[SEQ_NRATE] = {6, 4, 3, 8};    /* MIDI clocks a step: 1/16, 1/16T, 1/32, 1/8T */
@@ -124,10 +126,24 @@ static uint8_t seq_nx_pat, seq_nx_st;           /* the next step, and its patter
 static uint8_t seq_nx_none;                     /* (none: a list stops after this step; a hit near its end stays on it) */
 static uint8_t seq_nx_mask_on;                  /* (the next step starts an element with mutes: its early hits follow them) */
 static uint16_t seq_nx_mask;
-static uint8_t seq_late_n[DRUM_NCH];            /* (its ratchet) */
-/* ratchets (ISR): a hit's next ones, each 24 / n 24ths of a step after the one before; where the next is due, in 24ths
- * of the step playing: 24 and on is in the next step (a late or an early hit's ratchet runs over a step's end) */
-static uint8_t seq_rat_left[DRUM_NCH], seq_rat_at[DRUM_NCH], seq_rat_d[DRUM_NCH], seq_rat_vel[DRUM_NCH];
+static uint16_t seq_late_n[DRUM_NCH];           /* (its ratchet: SEQ_RATCH's hits | RAMP << 8, all of it; a byte lost
+                                                 * the RAMP until 2026-11-25) */
+/* ratchets (ISR): a hit's next ones, hit k of n at k/n of a step after the first. Their places are counted in 840ths
+ * of a step (SEQ_RAT1: 840 = lcm(1..8), so every n of 1..8 divides it and k/n is exact, 5 and 7 too); a hit plays at
+ * the first block whose frac (0..255) has reached its place, rounded to the nearest 255th (SEQ_FRAC840). Until
+ * 2026-11-23 they were counted in 24ths (24 / n, hits 1..4): 840 is 35 x 24, so a place k/24 is 35k/840 and
+ * (35k * 255 + 420) / 840 = (k * 255 + 12) / 24, SEQ_FRAC24's: for 1, 2, 3, 4, 6 and 8 hits (24 / n exact) every hit
+ * plays at the same block as it did. Where the next is due, in 840ths of the step playing: SEQ_RAT1 and on is in the
+ * next step (a late or an early hit's ratchet runs over a step's end); a late or an early hit's own place stays in
+ * 24ths (micro timing), x 35 here */
+#define SEQ_RAT1 840u
+#define SEQ_FRAC840(u) (((u) * 255u + SEQ_RAT1 / 2u) / SEQ_RAT1)   /* u 840ths of a step, as frac (0..255) */
+_Static_assert(SEQ_RAT1 % 24u == 0u && SEQ_RAT1 % 5u == 0u && SEQ_RAT1 % 7u == 0u && SEQ_RAT1 % 8u == 0u,
+               "the ratchets' 840ths: every n of 1..8, and the 24ths, exact");
+static uint8_t seq_rat_left[DRUM_NCH], seq_rat_vel[DRUM_NCH];   /* (the hits to come; the step's velocity) */
+static uint8_t seq_rat_n[DRUM_NCH];             /* (its hits) */
+static int8_t seq_rat_ramp[DRUM_NCH];           /* (its RAMP: each hit's velocity) */
+static uint16_t seq_rat_at[DRUM_NCH], seq_rat_d[DRUM_NCH];   /* (840ths: up to two steps' worth) */
 static uint8_t seq_pos[DRUM_NCH], seq_nx_pos[DRUM_NCH];   /* the step each part is on, and its next (parts loop on their own lengths) */
 static volatile uint16_t seq_ev[32];            /* ISR -> main: the hits played, ch << 8 | vel */
 static volatile uint32_t seq_ev_t[32];          /* (when each is heard, TIMER4) */
@@ -156,9 +172,11 @@ static void seq_set(uint32_t pat, uint32_t ch, uint32_t st, uint32_t v)
 
 /* ---- the ISR side */
 static uint32_t seq_hit_ms[DRUM_NCH], seq_hits[DRUM_NCH];   /* (the host tests: when each channel's last hit was made, how many) */
+static uint8_t seq_hit_frac[DRUM_NCH];          /* (the host tests: where in its step, frac, each one's last hit was) */
 static void seq_out(uint32_t ch, uint32_t vel)  /* a hit now, and out on MIDI when it is heard */
 {
     seq_hit_ms[ch] = fm1_ms;
+    seq_hit_frac[ch] = seq.frac;
     seq_hits[ch]++;
     drum_hit_isr(ch, vel, 0);
     seq_ev[seq_ev_w % 32u] = (uint16_t)(ch << 8 | vel);
@@ -179,7 +197,8 @@ static void seq_out(uint32_t ch, uint32_t vel)  /* a hit now, and out on MIDI wh
  * from the history, are, each at its place in the slice, as the channels' mutes are now (a channel muted: silent; one
  * unmuted while it loops: only if it was heard in the slice, as only what is heard goes in the history) */
 #define SEQ_BR_E8 4096u
-#define SEQ_BH_N 512u                           /* (a 1/4 slice: 10 channels at 1/32 with ratchet 4 are 320 hits) */
+#define SEQ_BH_N 512u                           /* (a 1/4 slice: 10 channels at 1/32 with ratchet 4 are 320 hits; with
+                                                 * ratchet 8, 640: its first ones are then not in the loop) */
 static volatile uint16_t seq_br_len;            /* main: the slice, in 4096ths of an eighth (0: off) */
 static volatile uint8_t seq_br_req;             /* main: + 1 after seq_br_len: start (again) / stop */
 static volatile uint8_t seq_br_done, seq_br_on;   /* (ISR: the requests done; on) */
@@ -286,16 +305,35 @@ static void seq_br_block(void)                  /* every block, after the sequen
     seq_br_tl = t;
 }
 
-static void seq_hit_n(uint32_t ch, uint32_t vel, uint32_t at, uint32_t n)   /* a hit at 24ths at of the step, n with its
-                                                 * ratchet; while the channel's ratchet still has hits to come, none:
-                                                 * the ratchet goes first (an early hit, the next step's) */
+/* a ratchet's RAMP (2026-11-23; without steps since 2026-11-24, the user): hit k of n at the step's velocity v (FLAT,
+ * 0); DOWN r % (r -1 .. -100) from v (hit 0) to v - (v - 1) r / 100 (the last: DOWN 100 % to 1), in a straight line,
+ * v - (v - 1) r k / (100 (n - 1)), rounded to the nearest; UP r % the reverse, from the lowest to v. Until 2026-11-24
+ * five: DOWN and UP to and from about half (now 50 %), DOWN+ and UP+ to and from 1 (100 %). The sound follows as with
+ * an accent (a channel's VEL: drum.c vel_gain, at VEL 100 a velocity of 1 66 dB down), and the velocity sent on MIDI
+ * (seq_out) */
+static uint32_t seq_ramp_vel(uint32_t v, uint32_t k, uint32_t n, int32_t r)
 {
+    uint32_t d;
+    if (n < 2u || !r || v < 2u) return v;
+    if (r > 0) k = n - 1u - k; else r = -r;
+    if (r > 100) r = 100;
+    d = 100u * (n - 1u);
+    return v - ((v - 1u) * (uint32_t)r * k * 2u + d) / (2u * d);   /* (rounded to the nearest) */
+}
+static void seq_hit_n(uint32_t ch, uint32_t vel, uint32_t at, uint32_t r)   /* a hit at 24ths at of the step, with its
+                                                 * ratchet r (SEQ_RATCH: hits | RAMP << 8); while the channel's ratchet
+                                                 * still has hits to come, none: the ratchet goes first (an early hit,
+                                                 * the next step's) */
+{
+    uint32_t n = r & 15u;
     if (seq_rat_left[ch]) return;
-    seq_hit(ch, vel);
-    if (n < 1u || n > 4u) n = 1u;
+    if (n < 1u || n > 8u) n = 1u;
+    seq_hit(ch, seq_ramp_vel(vel, 0u, n, (int8_t)(r >> 8 & 0xFFu)));
+    seq_rat_n[ch] = (uint8_t)n;
+    seq_rat_ramp[ch] = (int8_t)(r >> 8 & 0xFFu);
     seq_rat_left[ch] = (uint8_t)(n - 1u);
-    seq_rat_d[ch] = (uint8_t)(24u / n);
-    seq_rat_at[ch] = (uint8_t)(at + 24u / n);
+    seq_rat_d[ch] = (uint16_t)(SEQ_RAT1 / n);
+    seq_rat_at[ch] = (uint16_t)(at * (SEQ_RAT1 / 24u) + SEQ_RAT1 / n);
     seq_rat_vel[ch] = (uint8_t)vel;
 }
 
@@ -384,7 +422,8 @@ static void seq_late_out(void)                  /* a step's end: a late hit not 
     uint32_t ch;
     for (ch = 0; ch < DRUM_NCH; ch++) {
         if (seq_late[ch]) { seq_late[ch] = 0; seq_hit_n(ch, seq_late_vel[ch], 24u, seq_late_n[ch]); }
-        if (seq_rat_left[ch]) seq_rat_at[ch] = (uint8_t)(seq_rat_at[ch] >= 24u ? seq_rat_at[ch] - 24u : 0u);   /* (on into this step) */
+        if (seq_rat_left[ch])                   /* (on into this step) */
+            seq_rat_at[ch] = (uint16_t)(seq_rat_at[ch] >= SEQ_RAT1 ? seq_rat_at[ch] - SEQ_RAT1 : 0u);
     }
 }
 static void seq_fire(uint32_t st)
@@ -414,7 +453,7 @@ static void seq_fire(uint32_t st)
         if (!SEQ_COND(pat, ch, s)) continue;
         vel = seq_bit(p->t[ch].acc, s) ? SEQ_VEL_ACC : SEQ_VEL;
         m = SEQ_MICRO(pat, ch, s);
-        if (m > 0) { seq_late[ch] = (uint8_t)m; seq_late_vel[ch] = (uint8_t)vel; seq_late_n[ch] = (uint8_t)SEQ_RATCH(pat, ch, s); continue; }
+        if (m > 0) { seq_late[ch] = (uint8_t)m; seq_late_vel[ch] = (uint8_t)vel; seq_late_n[ch] = (uint16_t)SEQ_RATCH(pat, ch, s); continue; }
         seq_hit_n(ch, vel, 0u, SEQ_RATCH(pat, ch, s));   /* (on the step; early but not sent early: the first step, a jump) */
     }
     seq_peek(pat, st);                          /* the next step's early hits */
@@ -430,10 +469,12 @@ static void seq_micro_block(void)               /* every block, frac set: the la
 {
     uint32_t ch, f = seq.frac, mute = seq_mute_now(), solo = seq.solo;
     for (ch = 0; ch < DRUM_NCH; ch++) {
-        if (seq_rat_left[ch] && seq_rat_at[ch] < 24u && f >= SEQ_FRAC24(seq_rat_at[ch])) {
-            if (!(mute >> ch & 1u) && !(solo && !(solo >> ch & 1u))) seq_hit(ch, seq_rat_vel[ch]);
+        if (seq_rat_left[ch] && seq_rat_at[ch] < SEQ_RAT1 && f >= SEQ_FRAC840(seq_rat_at[ch])) {
+            uint32_t k = seq_rat_n[ch] - seq_rat_left[ch];   /* (hit k of n; one muted still counts) */
+            if (!(mute >> ch & 1u) && !(solo && !(solo >> ch & 1u)))
+                seq_hit(ch, seq_ramp_vel(seq_rat_vel[ch], k, seq_rat_n[ch], seq_rat_ramp[ch]));
             seq_rat_left[ch]--;
-            seq_rat_at[ch] = (uint8_t)(seq_rat_at[ch] + seq_rat_d[ch]);
+            seq_rat_at[ch] = (uint16_t)(seq_rat_at[ch] + seq_rat_d[ch]);
         }
         if (seq_late[ch] && f >= SEQ_FRAC24(seq_late[ch])) {   /* (muted since its step: not heard, nor its ratchet) */
             uint32_t at = seq_late[ch];

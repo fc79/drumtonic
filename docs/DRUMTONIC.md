@@ -99,7 +99,7 @@ A **song** is a list of rows played one after the other. A row is a pattern or a
   and the black keys' lights show the row's mutes). When a row starts, its mutes become the ones you hear; you can
   still change them by hand until the next row. A song where no row has mutes leaves your mutes as they are.
 - **Tempo.** Knob 1 sets the song's tempo. A song takes the tempo playing when it gets its first row.
-- **Copy, insert, delete.** GLO held copies the row chosen, GLO + SEL inserts the copy there, GLO + REC deletes the
+- **Copy, insert, delete.** GLO pressed and let go copies the row chosen, GLO + SEL inserts the copy there, GLO + REC deletes the
   row. On END, GLO + REC clears the whole song after **CLEAR SONG 2?** (SEL yes, HOME no).
 - **From a chain.** An empty song with a chain just made on LIVE says `SEL: FROM THE CHAIN`: SEL on END makes that
   chain its first row.
@@ -130,7 +130,7 @@ on), and the song keeps the tempo playing.
 
 <p align="center">
 <img src="screens/steps.png" width="240" alt="STEPS">
-<img src="screens/step-held.png" width="240" alt="A step held: condition and micro timing">
+<img src="screens/step-held.png" width="240" alt="A step held: micro timing, ratchet and RAMP">
 </p>
 
 The 10 channels by 16 steps; OCT- and OCT+ show steps 17-64. With a pattern longer than 16 steps, a row of
@@ -138,11 +138,12 @@ segments over the grid shows its parts of 16: the one on screen white, the one p
 are steps after the ones shown, OCT- while there are steps before. The white keys are the chosen channel's steps.
 A tap turns a step on or off. An empty step turns on as you press it, so you can press, hold and turn in one go.
 
-- **Knobs**: RATE (1/16, 1/16T, 1/32, 1/8T), MICRO, REPEAT (note repeat's rate) and QUANT.
+- **Knobs**: RATE (1/16, 1/16T, 1/32, 1/8T), MICRO, REPEAT (note repeat's rate) and QUANT. While you hold a step,
+  knobs 3 and 4 are RATCH and RAMP; let go and they are REPEAT and QUANT again.
 - **QUANT** pulls the chosen channel's micro timing toward the grid as it plays (with ALL selected, every
   channel's): 0 % plays it as recorded, 100 % on the grid. The steps keep their timing, so turning back gives it
   back; the cells show what you hear, and MICRO with a step held shows the timing as recorded. GLO + QUANT puts it
-  back to 0 %. SAVE writes it into the steps and puts QUANT back to 0 %.
+  back to 0 %. SAVE keeps QUANT as it is, with the patterns.
 - **Part length.** PRESETS sets the chosen part's length: 1, 2, 3, 4, 5, 6, 8, 12, 16, 24, 32 or 64 steps (with
   ALL selected, every part's). A longer length copies the steps, and going back gives the original. Parts of
   different lengths loop on their own, and the next pattern starts at the end of the longest part.
@@ -152,15 +153,25 @@ A tap turns a step on or off. An empty step turns on as you press it, so you can
 - **Micro timing.** Hold a step and turn MICRO (or press OCT+ / OCT-): 1/24 of a step later or earlier per click,
   up to 23/24 either way. The knob pauses at 0 before crossing to the other side. GLO + MICRO puts the step back
   on the grid. The step's cell moves that way on the screen.
-- **Ratchet.** Hold a step and press ARP: 1, 2, 3, 4 hits in the step, then 1 again. The cell shows a dot. A
-  ratchet always plays to its last hit.
+- **Ratchet.** Hold a step and turn RATCH: 1 to 8 hits, evenly through the step. ARP does the same a press at a
+  time, going round from 8 back to 1. The cell shows a dot. A ratchet always plays to its last hit.
+- **RAMP.** With a ratchet of 2 hits or more, hold its step and turn RAMP: each hit louder or softer than the one
+  before. DOWN 1 % to 100 % (shown `-1%` to `-100%`) starts at the step's velocity and goes down, at 100 % to the
+  softest; UP 1 % to 100 % (`+1%` to `+100%`) starts low and comes up to the step's velocity. FLAT, in the middle,
+  plays every hit alike. How much softer a hit sounds is the sound's VEL (OSC's and NOISE's, see
+  [DRUMS.md](DRUMS.md)): at VEL 0 every hit sounds alike. One click is 1 %, turning faster moves further, and the knob pauses at FLAT before crossing
+  to the other side. The bar grows from the middle: left for DOWN, right for UP. On a step of one hit the band says
+  `RATCH FIRST`, and a ratchet set back to one hit loses its RAMP. A RAMP uses one of the places that knob motion
+  and p-locks share, one for each channel of a pattern that has any (`MOTION FULL` when none is left).
 - **Note repeat.** A tap on ARP turns it on (`RPT 1/4` in the bottom band) and another turns it off; leaving SEQ
   turns it off too. While it is on, a black key repeats its channel while held: a hit at once, then evenly at the
   rate. The rates are 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32 and 1/32T, set with REPEAT or ARP held + white keys
   1-8. With REC on, each hit is recorded on the nearest step, one hit a step (with REC on FREE, with its micro
   timing).
 
-A lock, a condition, micro timing and a ratchet are all copied, pasted, cleared, undone and saved with the step.
+A lock, a condition, micro timing, a ratchet and its RAMP are all copied, pasted, cleared, undone and saved with the
+step. To copy a step, hold it and press and let go GLO (`COPIED` / `STEP 3`); then, on this channel or another, GLO +
+a white key pastes it there.
 
 ### EDIT: SOUND and LIBRARY
 
@@ -178,8 +189,8 @@ shaker, cymbals, effects) and 64 places for yours. SELECT moves through the rows
 channel plays each one at once, in the running pattern. SEL loads it with its name. GLO + SEL saves the channel's
 sound (on a factory row, into the first free place). GLO + REC deletes one of your sounds.
 
-On SOUND, GLO held copies the channel's sound and GLO + a black key pastes it onto another channel, with its
-name and sends.
+On SOUND, GLO pressed and let go copies the channel's sound, and GLO + a black key pastes it onto another channel,
+with its name and sends.
 
 ### ENV: MIX and the kits
 
@@ -252,12 +263,12 @@ that is always on. It does nothing under -0.2 dBFS and stops every peak at the c
 | --- | --- |
 | PLAY | play and stop |
 | REC | record: hits on white keys 1-10 (except on LIVE and SONG) and knob moves; on SONG, record a song |
-| SAVE | saves everything: the sound, the 16 kits, the 32 patterns (with QUANT written into the steps) and the 8 songs. It works while playing too; the sound goes on |
+| SAVE | saves everything: the sound, the 16 kits, the 32 patterns (with their QUANT) and the 8 songs. It works while playing too; the sound goes on |
 | SEL | held: FILL. In a question: yes (HOME: no). In a list: run the row (SONG: play from it) |
-| ARP | HOME: beat repeat. SEQ: note repeat. A step held: its ratchet |
+| ARP | HOME: beat repeat. SEQ: note repeat. A step held: its ratchet, 1 to 8 hits |
 | MASTER | the volume |
-| GLO held | copy what the page shows: the step held, the channel's part on STEPS, its sound on SOUND, the LFO on LFO, the row on SONG, otherwise the pattern |
-| GLO + a key | paste there |
+| GLO, let go with nothing else pressed | copy what the page shows: the step held, the channel's part on STEPS, its sound on SOUND, the LFO on LFO, the row on SONG, otherwise the pattern (`COPIED` / `STEP 3`). Held, its guide says what letting go copies and what a key pastes |
+| GLO + a key | paste there what you copied before (a step copied: a white key on STEPS or SOUND, on any channel) |
 | GLO + REC | clear; on MIX, erase the kit playing; on SONG, delete the row (on END, the song) |
 | GLO + a knob | remove that knob's motion and LFO |
 | HOME + a white key | pick a pattern from any page |

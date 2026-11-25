@@ -1,6 +1,7 @@
-# Drumtonic on the FM-1: every motion lane used (176 since 2026-11-17): 4 p-locks on BD and 4 on SD in P1 (8 lanes),
-# P1 pasted over P2..P22 (21 x 8: 176), one more paste says MOTION / FULL and the lanes stay 176; SAVE.
-# tests/flash/drumtonic_fm1_lanesfull2.txt, on the same HOST_FLASH, finds the 176 after a restart.
+# Drumtonic on the FM-1: every motion lane used (120 since 2026-11-23, the steps' marks apart; 176 from 2026-11-17):
+# 4 p-locks on BD and 4 on SD in P1 (8 lanes), P1 copied (GLO tapped) and pasted over P2..P15 (14 x 8: 120), the paste on P16 and the ones
+# after say MOTION / FULL and the lanes stay 120; SAVE.
+# tests/flash/drumtonic_fm1_lanesfull2.txt, on the same HOST_FLASH, finds the 120 after a restart.
 # buttons: 1 OCT+ 3 SEL 6 EDIT 7 GLO 8 HOME 9 SAVE; encoders 2-5 KNOB 1-4
 50 btn 8
 100 btn 6
@@ -21,6 +22,7 @@
 1300 expect 8 lanes
 1400 btn 8
 1500 expect 0 view
+1580 btn 7
 1600 btndown 7
 1900 keys 0x4
 1950 keys 0
@@ -91,12 +93,14 @@
 11050 keys 0
 11100 btnup 7
 11200 btn 3
+11210 expect 0 full
 11400 btndown 7
 11700 keys 0x4000000
 11750 keys 0
 11800 btnup 7
 11900 btn 3
-12100 expect 128 lanes
+11910 expect 1 full
+12100 expect 120 lanes
 12200 btn 1
 12400 btndown 7
 12700 keys 0x1
@@ -128,12 +132,13 @@
 16250 keys 0
 16300 btnup 7
 16400 btn 3
-16600 expect 176 lanes
+16600 expect 120 lanes
 16700 btndown 7
 17000 keys 0x800
 17050 keys 0
 17100 btnup 7
 17200 btn 3
-17400 expect 176 lanes
+17210 expect 1 full
+17400 expect 120 lanes
 17500 btn 9
 19000 end

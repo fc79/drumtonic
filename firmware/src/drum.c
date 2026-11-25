@@ -63,7 +63,7 @@ typedef struct {
     uint32_t nmorph;                            /* the noise's decay: 0 exponential .. 256 linear (the clap: 0) */
     int32_t nf, nq, nbpg, eqf, eqg;             /* noise filter and EQ coefficients (Q15) */
     int32_t og, ng;                             /* osc and noise in the mix, Q15 */
-    int32_t ovel, nvel;                         /* velocity sensitivity, Q15 */
+    uint32_t ovel, nvel;                        /* velocity sensitivity: VEL 0..127 (vel_gain) */
     int32_t drive;                              /* distortion: 0 off, else a gain in Q12 */
     int32_t gl, gr;                             /* level times pan, Q15 */
     uint8_t wave, pmode, nfilt, nenv, stereo, choke;
@@ -83,7 +83,11 @@ typedef struct {
     drum_env_t eo, en, el;                      /* osc; noise: its exponential (or clap) and its linear decay */
     int32_t lp, bp, lp2, bp2;                   /* noise filter (L, and R when stereo) */
     int32_t eql, ebl, eqr, ebr;                 /* EQ filter, L and R */
-    uint8_t on, kill;
+    int32_t lastl, lastr;                       /* its last frame out (after its gains), L and R */
+    int32_t offl, offr;                         /* a hit over a sound: the jump to its first frame, fading (DECLICK) */
+    uint8_t on, kill, join;                     /* join: 1 a hit over a sound, its first frame still to come; 2 a voice
+                                                 * started from silence, not rendered yet (a second hit then is no join:
+                                                 * until 2026-11-25 it took 0 for the sound and softened the attack) */
 } drum_voice_t;
 
 static drum_cfg_t drum_cfg[DRUM_NCH];
@@ -128,7 +132,7 @@ static void drum_set_patch(uint32_t ch, const drum_patch_t *pp)
     c->plfo = (uint32_t)(((uint64_t)155831u * drum_exp2((int32_t)(p[P_PRATE] * 7378u))) >> 16); /* 0.1 Hz .. 2 kHz, a step a block */
     c->oatk = p[P_OATK] ? ramp_step(knob_ms(p[P_OATK]) >> 2) : ONE;
     c->ok = decay_k(knob_ms(p[P_ODEC]));
-    c->ovel = (int32_t)p[P_OVEL] * 258;
+    c->ovel = p[P_OVEL];
 
     c->nfilt = (uint8_t)knob_mode(p[P_NFILT]);
     q = (int32_t)((46341u * drum_exp2(-(int32_t)(p[P_NQ] * 2580u))) >> 16);                     /* 1/Q: Q 0.7 .. 22 */
@@ -143,7 +147,7 @@ static void drum_set_patch(uint32_t ch, const drum_patch_t *pp)
     c->nk = decay_k(v);
     c->nlin = ramp_step(v);
     c->stereo = p[P_NSTEREO] >= 64u;
-    c->nvel = (int32_t)p[P_NVEL] * 258;
+    c->nvel = p[P_NVEL];
 
     mix = (int32_t)p[P_MIX];
     c->drive = p[P_DIST] ? 4096 + (int32_t)p[P_DIST] * 484 : 0;                                  /* x1 .. x16 */
@@ -176,9 +180,28 @@ static void drum_init(void)
     }
 }
 
-static int32_t vel_gain(int32_t sens, uint32_t vel)   /* 1 - sens + sens * (vel / 127)^2, Q15 (a drum machine's square law) */
+/* the velocity's gain (2026-11-24): (vel / 127)^(2 VEL / 127), Q15. In dB, 2 VEL / 127 * 20 log10(vel / 127): each
+ * click of VEL deepens it alike (VEL 127: the square law as before, velocity 45 18 dB under 127; VEL 100: 14 dB, a
+ * velocity of 1 66 dB, so a ratchet's RAMP and soft hits are heard). Until 2026-11-23 1 - VEL + VEL (vel / 127)^2:
+ * the same at 127 and a step's 96 within 0.3 dB, but most of its depth in VEL's last clicks (velocity 1: 13 dB under
+ * at VEL 100, 78 at 127; the user: too big a change between 100 and 127) */
+static const uint32_t VEL_LOG2[128] = {         /* log2(127 / vel), Q16 (0: 127's) */
+    0, 458010, 392474, 354138, 326938, 305841, 288602, 274028, 261402, 250266, 240305, 231293, 223066, 215498,
+    208492, 201968, 195866, 190134, 184730, 179618, 174769, 170156, 165757, 161554, 157530, 153671, 149962, 146394,
+    142956, 139638, 136432, 133332, 130330, 127421, 124598, 121858, 119194, 116604, 114082, 111626, 109233, 106898,
+    104620, 102395, 100221, 98096, 96018, 93985, 91994, 90045, 88135, 86262, 84426, 82625, 80858, 79123, 77420,
+    75746, 74102, 72486, 70896, 69334, 67796, 66283, 64794, 63329, 61885, 60463, 59062, 57682, 56322, 54981, 53658,
+    52354, 51068, 49799, 48546, 47310, 46090, 44886, 43697, 42522, 41362, 40216, 39084, 37965, 36859, 35766, 34685,
+    33617, 32560, 31516, 30482, 29460, 28449, 27448, 26458, 25479, 24509, 23549, 22599, 21658, 20726, 19804, 18890,
+    17986, 17089, 16202, 15322, 14451, 13587, 12732, 11884, 11043, 10210, 9384, 8566, 7754, 6950, 6152, 5360, 4576,
+    3798, 3026, 2260, 1501, 747, 0
+};
+static int32_t vel_gain(uint32_t sens, uint32_t vel)   /* sens: VEL 0..127 (past it, a damaged save's: 127, so
+                                                 * never 0, nor two 0s for drum_hit_isr's mean) */
 {
-    return 32768 - sens + (int32_t)((uint32_t)sens * (vel * vel) / 16129u);
+    if (!sens || vel >= 127u) return 32768;
+    if (sens > 127u) sens = 127u;
+    return (int32_t)(drum_exp2(-(int32_t)(VEL_LOG2[vel ? vel : 1u] * sens * 2u / 127u)) >> 1);
 }
 
 static void env_start(drum_env_t *e, uint32_t atk, uint32_t mode)   /* mode: NENV_... (the oscillator: NENV_EXP) */
@@ -222,6 +245,8 @@ static void drum_hit_isr(uint32_t ch, uint32_t vel, int32_t semi)   /* a hit now
     v->lp = v->bp = v->lp2 = v->bp2 = 0;
     v->eql = v->ebl = v->eqr = v->ebr = 0;
     v->kill = 0;
+    v->join = !v->on || v->join == 2u ? 2u : 1u;   /* (over a sound: its first frame starts where the sound was) */
+    if (!v->on) v->lastl = v->lastr = 0;
     v->on = 1;
 #ifdef DRUM_SENDS
     drum_hits[ch]++;
@@ -309,20 +334,31 @@ DRUM_HOT uint32_t xorshift(uint32_t *s)
     return *s = x;
 }
 
+/* A hit over a channel still sounding (ratchets, close steps, quick hits by hand) starts its sound from the top: the
+ * output jumped from where the sound was to the new start, a click (the bass drums: up to 40 times their own biggest
+ * step, 2026-11-23). The jump is taken off the first frame and fades out, 1 - 1/32 a frame: 0.7 ms, 2 % left after
+ * 3 ms; the new hit's own attack is kept, and a hit on a silent channel is unchanged. */
+#define DECLICK_SH 5
+
 /* one block of one channel, added to out (DRUM_BLK frames) and, with DRUM_SENDS, to the sends sb. It touches only
  * this channel's voice (and reads its cfg): two cores can render two channels at once (DRUM_CPU2) */
 static void voice_block(uint32_t ch, int32_t *out, int32_t (*sb)[DRUM_BLK])
 {
     const drum_cfg_t *c = &drum_cfg[ch];
     drum_voice_t *v = &drum_v[ch];
-    uint32_t i, o0 = v->eo.lvl, n0 = noise_lvl(c, v), inc;
-    int32_t pitch, dO, dN, eo, en;
+    uint32_t i, o0 = v->eo.lvl, n0 = noise_lvl(c, v), inc, join;
+    int32_t pitch, dO, dN, eo, en, ofl = v->offl, ofr = v->offr, ll = 0, lr = 0;
 
     /* the control step: envelopes to the block's end, the pitch for this block */
     env_step(&v->eo, c->oatk, c->ok, 0, v->kill);
     env_step(&v->en, c->natk, c->nk, 0, v->kill);
     env_step(&v->el, c->natk, c->nk, c->nlin, v->kill);
-    if (v->eo.st == E_OFF && (c->nmorph == 256u || v->en.st == E_OFF) && (c->nmorph == 0u || v->el.st == E_OFF)) { v->on = 0; return; }
+    if (v->eo.st == E_OFF && (c->nmorph == 256u || v->en.st == E_OFF) && (c->nmorph == 0u || v->el.st == E_OFF) &&
+        !(v->offl | v->offr)) {                 /* (a DECLICK's jump not gone yet: on until it is, a short hit's end
+                                                 * cut it until 2026-11-25) */
+        v->on = 0;
+        return;
+    }
     switch (c->pmode) {
     case PMOD_DECAY:
         pitch = (int32_t)(((int64_t)c->pamt * (v->penv >> 14)) >> 16);
@@ -345,6 +381,8 @@ static void voice_block(uint32_t ch, int32_t *out, int32_t (*sb)[DRUM_BLK])
         inc = w > 0x7FFFFFFFu ? 0x7FFFFFFFu : (uint32_t)w;
     }
 
+    join = v->join == 1u;
+    v->join = 0;
     eo = (int32_t)(o0 >> 15);                   /* Q15, then a straight line to the block's end */
     en = (int32_t)(n0 >> 15);
     dO = ((int32_t)(v->eo.lvl >> 15) - eo) >> 4;
@@ -383,6 +421,17 @@ static void voice_block(uint32_t ch, int32_t *out, int32_t (*sb)[DRUM_BLK])
         }
         s = (int32_t)(((int64_t)s * v->gl) >> 15);
         sr = (int32_t)(((int64_t)sr * v->gr) >> 15);
+        if (join) {                             /* (a hit over a sound: the jump, DECLICK) */
+            join = 0;
+            ofl = v->lastl - s;
+            ofr = v->lastr - sr;
+        }
+        if (ofl | ofr) {
+            s += ofl;
+            sr += ofr;
+            ofl -= ofl / (1 << DECLICK_SH) + (ofl > 0) - (ofl < 0);   /* (toward 0, and to 0 at last) */
+            ofr -= ofr / (1 << DECLICK_SH) + (ofr > 0) - (ofr < 0);
+        }
         out[2u * i] += s;
         out[2u * i + 1u] += sr;
 #ifdef DRUM_SENDS
@@ -394,7 +443,13 @@ static void voice_block(uint32_t ch, int32_t *out, int32_t (*sb)[DRUM_BLK])
 #endif
         eo += dO;
         en += dN;
+        ll = s;
+        lr = sr;
     }
+    v->lastl = ll;
+    v->lastr = lr;
+    v->offl = ofl;
+    v->offr = ofr;
 }
 
 #ifdef DRUM_CPU2
@@ -403,13 +458,17 @@ static void voice_block(uint32_t ch, int32_t *out, int32_t (*sb)[DRUM_BLK])
 static int32_t drum_c1_mix[2u * DRUM_BLK], drum_c1_sb[2][DRUM_BLK];
 static uint8_t drum_c1_ch[DRUM_NCH];
 static uint32_t drum_c1_n;
+static uint8_t drum_c1_busy;                    /* core 1 holds a job across the render (fx.c: the reverb a render late):
+                                                 * the voices all here then */
 static void drum_c1_job(uint32_t a)
 {
     uint32_t i;
     (void)a;
     for (i = 0; i < 2u * DRUM_BLK; i++) drum_c1_mix[i] = 0;
     for (i = 0; i < DRUM_BLK; i++) drum_c1_sb[0][i] = drum_c1_sb[1][i] = 0;
+    PF_C1_BEGIN();
     for (i = 0; i < drum_c1_n; i++) voice_block(drum_c1_ch[i], drum_c1_mix, drum_c1_sb);
+    PF_C1_END();
 }
 #endif
 
@@ -422,11 +481,13 @@ static void drum_render(int32_t *out, uint32_t n)
             drum_v[ch].seen = drum_req[ch].seq;
             drum_hit_isr(ch, drum_req[ch].vel, drum_req[ch].semi);
         }
+    PF_LAP(PF_HITS);
     for (b = 0; b + DRUM_BLK <= n; b += DRUM_BLK) {
         int32_t peak = 0, g0, g1;
 #ifdef DRUM_BLOCK_HOOK
         DRUM_BLOCK_HOOK();                      /* (the sequencer: its hits start at this block, 0.36 ms steps) */
 #endif
+        PF_LAP(PF_SEQ);
         for (i = 0; i < 2u * DRUM_BLK; i++)
             mix[i] = 0;
 #ifdef DRUM_SENDS
@@ -440,10 +501,11 @@ static void drum_render(int32_t *out, uint32_t n)
                 if (drum_v[ch].on) act[na++] = ch;
             drum_c1_n = 0;
             for (k = 1; k < na; k += 2) drum_c1_ch[drum_c1_n++] = (uint8_t)act[k];
-            two = drum_c1_n && cpu2_run(drum_c1_job, 0);
+            two = drum_c1_n && !drum_c1_busy && cpu2_run(drum_c1_job, 0);
             for (k = 0; k < na; k += two ? 2u : 1u) voice_block(act[k], mix, drum_sblk);
             if (two) {
-                if (cpu2_wait() == 0) {
+                if (PF_WAIT(cpu2_wait(), PF_V0, PF_VW) == 0) {
+                    PF_C1(PF_V1);
                     for (i = 0; i < 2u * DRUM_BLK; i++) mix[i] += drum_c1_mix[i];
                     for (i = 0; i < DRUM_BLK; i++) { drum_sblk[0][i] += drum_c1_sb[0][i]; drum_sblk[1][i] += drum_c1_sb[1][i]; }
                 } else {                        /* (it failed: held for good; its channels here) */
@@ -466,6 +528,7 @@ static void drum_render(int32_t *out, uint32_t n)
             drum_bus[1][b + i] = drum_sblk[1][i];
         }
 #endif
+        PF_LAP(PF_V0);
         for (i = 0; i < 2u * DRUM_BLK; i++) {   /* the limiter: no lookahead, instant attack, ~90 ms release */
             int32_t a = mix[i] < 0 ? -mix[i] : mix[i];
             if (a > peak) peak = a;
@@ -483,5 +546,6 @@ static void drum_render(int32_t *out, uint32_t n)
             out[2u * (b + i)] += l > 32767 ? 32767 : l < -32767 ? -32767 : l;
             out[2u * (b + i) + 1u] += r > 32767 ? 32767 : r < -32767 ? -32767 : r;
         }
+        PF_LAP(PF_BLIM);
     }
 }

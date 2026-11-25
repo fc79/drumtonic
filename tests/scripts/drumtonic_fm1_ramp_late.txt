@@ -1,0 +1,25 @@
+# Drumtonic on the FM-1: a ratchet with a RAMP played late (micro timing +12/24) keeps its RAMP. Until 2026-11-25 a
+# late hit kept its ratchet in a byte (seq_fm1.c seq_late_n) and lost the RAMP above it: every hit at the step's
+# velocity. BD's step 1 (accented): 4 hits, DOWN 100 %, +12/24; 60 BPM, PLAY at 2000: its hits at 2125 + 62.5 k,
+# each checked midway (hitvel: as sent on MIDI): 127 85 43 1.
+# buttons: 8 HOME 11 SEQ 12 PLAY; encoders: 2-5 KNOB 1-4 (3 MICRO, 4 RATCH, 5 RAMP with a step held); white 1 = 0x1
+50 btn 8
+100 enc 2 -60
+150 expect 60 bpm
+200 btn 11
+300 keys 0x1
+310 enc 4 3
+500 enc 5 -100
+700 enc 3 12
+800 expect 4 ratch 0 0 0
+800 expect -100 ramp 0 0 0
+900 keys 0
+1990 expect 0 chhits 0
+2000 btn 12
+2156 expect 127 hitvel 0
+2219 expect 85 hitvel 0
+2281 expect 43 hitvel 0
+2344 expect 1 hitvel 0
+2344 expect 4 chhits 0
+2400 btn 12
+2500 end

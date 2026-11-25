@@ -5,6 +5,7 @@
 100 btn 11
 200 btn 8
 210 expect 0 view
+250 btn 7
 300 btndown 7
 600 keys 0x10
 650 keys 0

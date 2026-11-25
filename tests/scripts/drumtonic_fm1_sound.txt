@@ -6,6 +6,7 @@
 250 keys 0
 260 expect 5 ch
 270 expect 17241 name 9
+280 btn 7
 300 btndown 7
 700 keys 0x400000
 750 keys 0

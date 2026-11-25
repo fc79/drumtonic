@@ -1,5 +1,6 @@
-# Drumtonic on the FM-1: the ratchet. On SEQ a step held + ARP: 1 2 3 4 1 hits in the step (a lane, P_RATCH), the
-# bubble RATCHET / n; the step plays its hits evenly through it. BD (P1: steps 1, 7, 11) gets step 3, ratchet 3.
+# Drumtonic on the FM-1: the ratchet. On SEQ a step held + ARP: 1 2 .. 8 1 hits in the step (a mark, P_RATCH; 1 2 3 4
+# 1 until 2026-11-23), the bubble RATCHET / n; the step plays its hits evenly through it. BD (P1: steps 1, 7, 11) gets
+# step 3, ratchet 3: 3 then 4 5 6, 7 8 1, 2 3.
 # 120 BPM: a step 125 ms; PLAY at 1000: step 1 at ~1000, step 3's hits at ~1250, ~1292, ~1333.
 # white 3 = 0x10 (a first press only closes the opening)
 50 btn 8
@@ -17,7 +18,7 @@
 650 btn 10
 660 btn 10
 670 btn 10
-680 expect 2 ratch 0 0 2
+680 expect 6 ratch 0 0 2
 700 btn 10
 710 btn 10
 720 btn 10

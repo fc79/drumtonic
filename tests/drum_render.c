@@ -12,6 +12,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include "perf.h"                              /* (its laps: nothing without PERF_TEST) */
 #include "drum.c"
 #include "kits.c"
 #include "sound_lib.h"                         /* the FM-1's library: each sound on channel 1 */
@@ -162,6 +163,51 @@ static void pitch_top(void)                    /* PITCH 127 swept down from +4 o
     load_kit(&DRUM_KITS[0]);
 }
 
+static void declick(void)                       /* DECLICK (2026-11-25): two hits on a silent channel before its first
+                                                 * frame sound as one (until then the second took 0 for the sound and
+                                                 * softened the attack); a hit over a sound ends only with its jump gone */
+{
+    static int32_t one[2u * 4096u];
+    drum_patch_t p = DRUM_KITS[0].pat[0];
+    uint32_t b, k, diff = 0, cut = 0;
+    p.p[P_MIX] = 0;                             /* (the oscillator alone: no noise to differ) */
+    drum_set_patch(0, &p);
+    for (k = 0; k < 2u; k++) {
+        silence();
+        drum_hit_isr(0, 100, 0);
+        if (k) drum_hit_isr(0, 100, 0);
+        for (b = 0; b < 4096u / DRUM_BLK; b++) {
+            memset(buf, 0, sizeof buf);
+            drum_render(buf, DRUM_BLK);
+            if (!k) memcpy(one + 2u * DRUM_BLK * b, buf, 2u * DRUM_BLK * sizeof buf[0]);
+            else diff += memcmp(one + 2u * DRUM_BLK * b, buf, 2u * DRUM_BLK * sizeof buf[0]) != 0;
+        }
+    }
+    p = DRUM_KITS[0].pat[0];                    /* a long sound, then a hit of 1 ms over it (oscillator and noise): on
+                                                 * until its jump is gone; the jump as a block begins far from 0 when the
+                                                 * voice ends there: cut (until 2026-11-25) */
+    p.p[P_MIX] = 0; p.p[P_ODEC] = 127; p.p[P_EQG] = 64;
+    drum_set_patch(0, &p);
+    silence();
+    drum_hit_isr(0, 127, 0);
+    for (b = 0; b < 200u && (drum_v[0].lastl < 0 ? -drum_v[0].lastl : drum_v[0].lastl) < 4000; b++) {
+        memset(buf, 0, sizeof buf);             /* (until its last frame is far from 0: a jump to take) */
+        drum_render(buf, DRUM_BLK);
+    }
+    p.p[P_ODEC] = 0; p.p[P_OATK] = 0; p.p[P_NDEC] = 0; p.p[P_NATK] = 0; p.p[P_WAVE] = 0;
+    drum_set_patch(0, &p);
+    drum_hit_isr(0, 1, 0);
+    for (b = 0; b < 400u && drum_v[0].on; b++) {
+        int32_t before = drum_v[0].offl < 0 ? -drum_v[0].offl : drum_v[0].offl;
+        memset(buf, 0, sizeof buf);
+        drum_render(buf, DRUM_BLK);
+        if (!drum_v[0].on && before > 256) cut++;   /* (16 frames take at most ~40 % of it off) */
+    }
+    printf("  declick: two hits at once %s one, a short hit's end %s\n", diff ? "NOT as" : "as", cut ? "CUT" : "after its jump");
+    if (diff || cut || drum_v[0].on) { printf("    FAIL: declick\n"); fails++; }
+    load_kit(&DRUM_KITS[0]);
+}
+
 static void cost(void)                         /* all 8 channels sounding, hit every 1/8 s, for 20 s */
 {
     struct timespec a, b;
@@ -249,6 +295,7 @@ int main(void)
     }
     choke();
     pitch_top();
+    declick();
     library();
     dist_makeup_check();
     cost();

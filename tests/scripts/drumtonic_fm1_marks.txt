@@ -1,0 +1,384 @@
+# Drumtonic on the FM-1: the step marks (motion.c), conditions, micro timing and ratchets, NMARK 896 for all the
+# patterns. P1: BD a ratchet on steps 1-16 (step 1 also a condition, step 2 micro timing 3/24 late), SD on steps 1-12:
+# 28 marks. P1 pasted over P2..P32 (GLO tapped: copied; GLO + a white on LIVE, SEL: yes; OCT+ for P17..P32): 896, no MOTION FULL. One
+# more ratchet (SD step 13): MOTION FULL, still 896. A step cleared (GLO + REC, a step held): 895, then the ratchet
+# fits; undo and redo. P1 cleared (GLO + REC, SEL: yes) and back by undo; SD pasted on BD (GLO tapped, GLO + black 1 on SEQ,
+# SEL). "full": the big bubble says MOTION FULL. white w: 0x1 0x4 0x10 ...; black 1 0x2 (BD), black 2 0x8 (SD)
+# buttons: 0 OCT- 1 OCT+ 3 SEL 7 GLO 8 HOME 9 SAVE 10 ARP 11 SEQ 12 PLAY; encoder 1 ALGORITHM
+# (a first press only closes the opening)
+50 btn 8
+100 btn 11
+150 expect 3 view
+200 keys 0x1
+240 btn 10
+280 keys 0
+330 keys 0x4
+370 btn 10
+410 keys 0
+460 keys 0x10
+500 btn 10
+540 keys 0
+590 keys 0x40
+630 btn 10
+670 keys 0
+720 keys 0x80
+760 btn 10
+800 keys 0
+850 keys 0x200
+890 btn 10
+930 keys 0
+980 keys 0x800
+1020 btn 10
+1060 keys 0
+1110 keys 0x1000
+1150 btn 10
+1190 keys 0
+1240 keys 0x4000
+1280 btn 10
+1320 keys 0
+1370 keys 0x10000
+1410 btn 10
+1450 keys 0
+1500 keys 0x40000
+1540 btn 10
+1580 keys 0
+1630 keys 0x80000
+1670 btn 10
+1710 keys 0
+1760 keys 0x200000
+1800 btn 10
+1840 keys 0
+1890 keys 0x800000
+1930 btn 10
+1970 keys 0
+2020 keys 0x1000000
+2060 btn 10
+2100 keys 0
+2150 keys 0x4000000
+2190 btn 10
+2230 keys 0
+2280 expect 16 marks
+2290 expect 2 ratch 0 0 15
+2340 keys 0x1
+2390 enc 1 1
+2400 enc 1 1
+2450 keys 0
+2460 expect 90 lane 0 0 26 0
+2510 keys 0x4
+2530 btn 1
+2550 btn 1
+2570 btn 1
+2620 keys 0
+2630 expect 3 micro 0 0 1
+2640 expect 131 lane 0 0 27 1
+2650 expect 16 marks
+2700 keys 0x8
+2750 keys 0
+2760 expect 1 ch
+2810 keys 0x1
+2850 btn 10
+2890 keys 0
+2940 keys 0x4
+2980 btn 10
+3020 keys 0
+3070 keys 0x10
+3110 btn 10
+3150 keys 0
+3200 keys 0x40
+3240 btn 10
+3280 keys 0
+3330 keys 0x80
+3370 btn 10
+3410 keys 0
+3460 keys 0x200
+3500 btn 10
+3540 keys 0
+3590 keys 0x800
+3630 btn 10
+3670 keys 0
+3720 keys 0x1000
+3760 btn 10
+3800 keys 0
+3850 keys 0x4000
+3890 btn 10
+3930 keys 0
+3980 keys 0x10000
+4020 btn 10
+4060 keys 0
+4110 keys 0x40000
+4150 btn 10
+4190 keys 0
+4240 keys 0x80000
+4280 btn 10
+4320 keys 0
+4370 expect 28 marks
+4380 expect 0 lanes
+4430 btn 8
+4480 expect 0 view
+4560 btn 7
+4580 btndown 7
+4880 keys 0x4
+4930 keys 0
+4980 btnup 7
+5080 btn 3
+5100 expect 0 full
+5200 btndown 7
+5500 keys 0x10
+5550 keys 0
+5600 btnup 7
+5700 btn 3
+5720 expect 0 full
+5820 btndown 7
+6120 keys 0x40
+6170 keys 0
+6220 btnup 7
+6320 btn 3
+6340 expect 0 full
+6440 btndown 7
+6740 keys 0x80
+6790 keys 0
+6840 btnup 7
+6940 btn 3
+6960 expect 0 full
+7060 btndown 7
+7360 keys 0x200
+7410 keys 0
+7460 btnup 7
+7560 btn 3
+7580 expect 0 full
+7680 btndown 7
+7980 keys 0x800
+8030 keys 0
+8080 btnup 7
+8180 btn 3
+8200 expect 0 full
+8300 btndown 7
+8600 keys 0x1000
+8650 keys 0
+8700 btnup 7
+8800 btn 3
+8820 expect 0 full
+8920 btndown 7
+9220 keys 0x4000
+9270 keys 0
+9320 btnup 7
+9420 btn 3
+9440 expect 0 full
+9540 btndown 7
+9840 keys 0x10000
+9890 keys 0
+9940 btnup 7
+10040 btn 3
+10060 expect 0 full
+10160 btndown 7
+10460 keys 0x40000
+10510 keys 0
+10560 btnup 7
+10660 btn 3
+10680 expect 0 full
+10780 btndown 7
+11080 keys 0x80000
+11130 keys 0
+11180 btnup 7
+11280 btn 3
+11300 expect 0 full
+11400 btndown 7
+11700 keys 0x200000
+11750 keys 0
+11800 btnup 7
+11900 btn 3
+11920 expect 0 full
+12020 btndown 7
+12320 keys 0x800000
+12370 keys 0
+12420 btnup 7
+12520 btn 3
+12540 expect 0 full
+12640 btndown 7
+12940 keys 0x1000000
+12990 keys 0
+13040 btnup 7
+13140 btn 3
+13160 expect 0 full
+13260 btndown 7
+13560 keys 0x4000000
+13610 keys 0
+13660 btnup 7
+13760 btn 3
+13780 expect 0 full
+13880 expect 448 marks
+13890 btn 1
+13990 btndown 7
+14290 keys 0x1
+14340 keys 0
+14390 btnup 7
+14490 btn 3
+14510 expect 0 full
+14610 btndown 7
+14910 keys 0x4
+14960 keys 0
+15010 btnup 7
+15110 btn 3
+15130 expect 0 full
+15230 btndown 7
+15530 keys 0x10
+15580 keys 0
+15630 btnup 7
+15730 btn 3
+15750 expect 0 full
+15850 btndown 7
+16150 keys 0x40
+16200 keys 0
+16250 btnup 7
+16350 btn 3
+16370 expect 0 full
+16470 btndown 7
+16770 keys 0x80
+16820 keys 0
+16870 btnup 7
+16970 btn 3
+16990 expect 0 full
+17090 btndown 7
+17390 keys 0x200
+17440 keys 0
+17490 btnup 7
+17590 btn 3
+17610 expect 0 full
+17710 btndown 7
+18010 keys 0x800
+18060 keys 0
+18110 btnup 7
+18210 btn 3
+18230 expect 0 full
+18330 btndown 7
+18630 keys 0x1000
+18680 keys 0
+18730 btnup 7
+18830 btn 3
+18850 expect 0 full
+18950 btndown 7
+19250 keys 0x4000
+19300 keys 0
+19350 btnup 7
+19450 btn 3
+19470 expect 0 full
+19570 btndown 7
+19870 keys 0x10000
+19920 keys 0
+19970 btnup 7
+20070 btn 3
+20090 expect 0 full
+20190 btndown 7
+20490 keys 0x40000
+20540 keys 0
+20590 btnup 7
+20690 btn 3
+20710 expect 0 full
+20810 btndown 7
+21110 keys 0x80000
+21160 keys 0
+21210 btnup 7
+21310 btn 3
+21330 expect 0 full
+21430 btndown 7
+21730 keys 0x200000
+21780 keys 0
+21830 btnup 7
+21930 btn 3
+21950 expect 0 full
+22050 btndown 7
+22350 keys 0x800000
+22400 keys 0
+22450 btnup 7
+22550 btn 3
+22570 expect 0 full
+22670 btndown 7
+22970 keys 0x1000000
+23020 keys 0
+23070 btnup 7
+23170 btn 3
+23190 expect 0 full
+23290 btndown 7
+23590 keys 0x4000000
+23640 keys 0
+23690 btnup 7
+23790 btn 3
+23810 expect 0 full
+23910 expect 896 marks
+23920 expect 2 ratch 31 0 15
+23930 expect 90 lane 31 0 26 0
+23940 expect 3 micro 31 0 1
+23950 expect 2 ratch 31 1 11
+23960 expect 1 ratch 31 1 12
+23970 expect 0 pat
+24020 btn 0
+24070 btn 11
+24120 expect 0 spage
+24130 expect 1 ch
+24180 keys 0x200000
+24220 btn 10
+24230 expect 1 full
+24260 keys 0
+24270 expect 896 marks
+24280 expect 1 ratch 0 1 12
+25480 expect 0 full
+25530 keys 0x1
+25580 btndown 7
+25630 btn 13
+25680 btnup 7
+25730 keys 0
+25740 expect 895 marks
+25750 expect 1 ratch 0 1 0
+25800 keys 0x200000
+25840 btn 10
+25880 keys 0
+25890 expect 0 full
+25900 expect 896 marks
+25910 expect 2 ratch 0 1 12
+26010 btndown 8
+26110 btn 0
+26210 btnup 8
+26220 expect 895 marks
+26230 expect 1 ratch 0 1 12
+26240 expect 1 ratch 0 1 0
+26250 expect 2 ratch 0 1 1
+26350 btndown 8
+26450 btn 1
+26550 btnup 8
+26560 expect 896 marks
+26570 expect 2 ratch 0 1 12
+26670 btn 8
+26720 expect 0 view
+26770 btndown 7
+26820 btn 13
+26870 btnup 7
+26970 btn 3
+27020 expect 868 marks
+27030 expect 1 ratch 0 0 3
+27040 expect -1 lane 0 0 26 0
+27050 expect 2 ratch 1 0 3
+27150 btndown 8
+27250 btn 0
+27350 btnup 8
+27360 expect 896 marks
+27370 expect 2 ratch 0 0 3
+27380 expect 90 lane 0 0 26 0
+27390 expect 3 micro 0 0 1
+27490 btn 11
+27520 btn 7
+27540 btndown 7
+27840 keys 0x2
+27890 keys 0
+27940 btnup 7
+27950 expect 2 ask
+28050 btn 3
+28060 expect 0 ask
+28070 expect 0 full
+28120 expect 892 marks
+28130 expect 1 ratch 0 0 0
+28140 expect 2 ratch 0 0 12
+28150 expect 1 ratch 0 0 13
+28160 expect -1 lane 0 0 26 0
+28170 expect 0 micro 0 0 1
+28180 expect 2 ratch 0 1 12
+28280 end

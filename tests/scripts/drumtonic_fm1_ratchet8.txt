@@ -1,0 +1,88 @@
+# Drumtonic on the FM-1: ratchets of 5, 7 and 8 hits, hit k at exactly k/n of the step (seq_fm1.c: places in 840ths,
+# 840 = lcm(1..8)), not at a multiple of 24ths (24 / 7 is not whole: until 2026-11-23 only 1..4 hits). BD (P1: steps 1,
+# 5, 11, 13) gets step 3 ratchet 5, step 7 ratchet 7, step 9 ratchet 8 (a step held + ARP: 1 2 .. 8, then 1).
+# 60 BPM: a step 250 ms; PLAY at 1000: step n (from 1) at 1000 + 250 (n - 1). Each expect sits midway between two hits:
+# the hits so far (chhits), and where in its step the last one came (hitfrac, 0..255: k/n of 255, rounded to the
+# nearest; at 60 BPM frac moves less than one a block, so it is exact).
+# buttons: 8 HOME 10 ARP 11 SEQ 12 PLAY; encoders: 2 KNOB 1 (TEMPO on LIVE)
+# white 3 = 0x10, white 7 = 0x800, white 9 = 0x4000 (a first press only closes the opening)
+50 btn 8
+100 enc 2 -60
+150 expect 60 bpm
+200 btn 11
+300 keys 0x10
+310 btn 10
+320 btn 10
+330 btn 10
+340 btn 10
+350 expect 5 ratch 0 0 2
+360 keys 0
+450 keys 0x800
+460 btn 10
+470 btn 10
+480 btn 10
+490 btn 10
+500 btn 10
+510 btn 10
+520 expect 7 ratch 0 0 6
+530 keys 0
+600 keys 0x4000
+610 btn 10
+620 btn 10
+630 btn 10
+640 btn 10
+650 btn 10
+660 btn 10
+670 btn 10
+680 expect 8 ratch 0 0 8
+690 keys 0
+700 expect 1 step 0 0 8
+990 expect 0 chhits 0
+1000 btn 12
+1100 expect 1 chhits 0
+# step 3 (1500): 5 hits, 50 ms apart
+1525 expect 2 chhits 0
+1575 expect 3 chhits 0
+1575 expect 51 hitfrac 0
+1625 expect 4 chhits 0
+1625 expect 102 hitfrac 0
+1675 expect 5 chhits 0
+1675 expect 153 hitfrac 0
+1725 expect 6 chhits 0
+1725 expect 204 hitfrac 0
+1900 expect 6 chhits 0
+2100 expect 7 chhits 0
+# step 7 (2500): 7 hits, 35.7 ms apart
+2518 expect 8 chhits 0
+2554 expect 9 chhits 0
+2554 expect 36 hitfrac 0
+2589 expect 10 chhits 0
+2589 expect 73 hitfrac 0
+2625 expect 11 chhits 0
+2625 expect 109 hitfrac 0
+2661 expect 12 chhits 0
+2661 expect 146 hitfrac 0
+2696 expect 13 chhits 0
+2696 expect 182 hitfrac 0
+2732 expect 14 chhits 0
+2732 expect 219 hitfrac 0
+2900 expect 14 chhits 0
+# step 9 (3000): 8 hits, 31.25 ms apart; step 11 at 3500
+3016 expect 15 chhits 0
+3047 expect 16 chhits 0
+3047 expect 32 hitfrac 0
+3078 expect 17 chhits 0
+3078 expect 64 hitfrac 0
+3109 expect 18 chhits 0
+3109 expect 96 hitfrac 0
+3141 expect 19 chhits 0
+3141 expect 128 hitfrac 0
+3172 expect 20 chhits 0
+3172 expect 159 hitfrac 0
+3203 expect 21 chhits 0
+3203 expect 191 hitfrac 0
+3234 expect 22 chhits 0
+3234 expect 223 hitfrac 0
+3400 expect 22 chhits 0
+3600 expect 23 chhits 0
+3700 end

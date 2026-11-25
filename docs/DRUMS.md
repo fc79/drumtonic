@@ -32,8 +32,9 @@
 | | choke | 0 none, 1..3: a hit silences the others of its group in ~10 ms |
 | | phase | the oscillator's start: 0 .. 90 degrees (more click) |
 
-The velocity follows a square law, 1 - VEL + VEL * (velocity / 127)^2 (VEL 127: velocity 45 plays 18 dB under 127,
-VEL 100: 10 dB). It sets the loudness after the distortion, weighed between the two VEL knobs by the mix, and the
+The velocity's gain is (velocity / 127)^(2 VEL / 127): for a given velocity each click of VEL adds the same number of
+dB (VEL 0: every velocity alike; VEL 127: a square law, velocity 45 plays 18 dB under 127, velocity 1 84 dB; VEL 100: 14 dB and 66 dB).
+It sets the loudness after the distortion, weighed between the two VEL knobs by the mix, and the
 osc/noise balance before it, so a distorted sound still plays softer when hit softer. The factory kits have VEL 100.
 The sum goes through the effects and the master: [DRUMTONIC.md](DRUMTONIC.md#fx-reverb-delay-delay-2-master-comp).
 

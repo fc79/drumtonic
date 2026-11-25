@@ -114,19 +114,37 @@ static float fx_hpa(uint32_t v)                 /* a one-pole high-pass's coeffi
     return rc / (rc + 1.0f / FX_SR);
 }
 
+#ifdef DRUM_CPU2
+static uint8_t fx_late;                         /* this render's reverb is the late one (fx_late_start): PRE DLY 256 frames
+                                                 * shorter inside (fx_reverb) */
+#else
+#define fx_late 0
+#endif
 #include "fx_rv.c"
 
 /* ---- the main loop's side */
-static void fx_apply_x(const uint8_t *kx)       /* from a kit's kitx (the ISR: a pattern's next kit, app_fm1.c) */
+static void fx_apply_rv(const uint8_t *x)       /* the reverb's part of a kit's effects (x: its kitx + X_FX) */
 {
-    const uint8_t *x = kx + X_FX;
-    float ms, a;
-    uint32_t f = x[FX_M_FILTER];
     fx_p.rv_fb = 0.2f + 0.73f * fx_pot(x[FX_RV_DECAY]);
     fx_p.rv_damp = 0.75f - fx_pot(x[FX_RV_TONE]) * 0.55f;
     fx_p.rv_lvl = 1.0f;                         /* (no RETURN knob: unity gain; the sends set how much) */
     fx_p.rv_hpa = fx_hpa(x[FX_RV_HPF]);
     rv_params(x);
+}
+#ifdef DRUM_CPU2
+static const uint8_t *fx_rv_pend;              /* a kit's reverb settings the ISR brought while core 1 ran the reverb (a
+                                                 * pattern's next kit): taken when it is done (fx_render) */
+#endif
+static void fx_apply_x(const uint8_t *kx)       /* from a kit's kitx (the ISR: a pattern's next kit, app_fm1.c) */
+{
+    const uint8_t *x = kx + X_FX;
+    float ms, a;
+    uint32_t f = x[FX_M_FILTER];
+#ifdef DRUM_CPU2
+    if (drum_c1_busy) fx_rv_pend = x;           /* (only the ISR, mid-render: main never runs while core 1 works) */
+    else
+#endif
+    fx_apply_rv(x);
     ms = FX_BEATS[x[FX_DL_TIME] % 13u] * 60000.0f / (float)(set.bpm ? set.bpm : 120u);
     while (ms > (float)(FX_DLEN - 256u) / FX_SR * 1000.0f) ms *= 0.5f;   /* longer than the line: half of it */
     fx_p.dl_ms = ms;
@@ -196,7 +214,8 @@ static void fx_init(void)
 }
 
 /* ---- the ISR's side */
-static float fx_tap(int32_t w, float d)         /* the line d samples behind w, interpolated */
+static inline __attribute__((always_inline)) float fx_tap(int32_t w, float d)   /* the line d samples behind w, interpolated
+                                                 * (inline: two a sample, 2026-11-23) */
 {
     float rp = (float)w - d, fr;
     int32_t i0, i1;
@@ -266,13 +285,61 @@ static inline void fx_lq_push(uint8_t *q, uint32_t qh, int32_t *qn, uint32_t k)
 }
 
 static float fx_l[256], fx_r[256];
-/* TO REV: the delay's echo into the reverb, a fixed 256 frames (5.8 ms) later: the reverb runs beside the delay on the
- * second core, so it takes what the delay gave before (the user's choice, 2026-11-16: a block later, not one core) */
+#ifdef DRUM_CPU2
+static float fx_dl[256], fx_dr[256];            /* the delay's own lines, beside the reverb on core 1 (one pair for both
+                                                 * ways: until 2026-11-25 each had its own, 2 KB) */
+#endif
+/* TO REV: the delay's echo into the reverb, a fixed 256 frames (5.8 ms) later: the reverb's input (fx_rvin) is made
+ * before the delay runs, so it takes what the delay gave before (the user's choice, 2026-11-16: a block later, not one
+ * core) */
 static uint32_t fx_d2r_w;
 static int32_t fx_rvin[256];
 static const int32_t *fx_rvbus;                 /* the reverb's input this block: the sends, with the delay if TO REV */
 #ifdef DRUM_CPU2
-static void fx_c1_job(uint32_t n) { fx_reverb(fx_rvbus, fx_l, fx_r, n); }   /* (the second core) */
+static void fx_c1_job(uint32_t n) { PF_C1_BEGIN(); fx_reverb(fx_rvbus, fx_l, fx_r, n); PF_C1_END(); }   /* (the second core) */
+/* the reverb a render late (the user's choice, 2026-11-23: docs/dev/PERF.md): from the start of a render core 1 runs it on
+ * the last render's input (fx_rvq), beside the voices (all on core 0 then: drum_c1_busy), and its return joins the mix
+ * 256 frames (5.8 ms) late. The reverb itself is the same sample for sample, with its settings as they were at the end
+ * of the render its input comes from (fx_rvs; a kit's change mid-render waits in fx_rv_pend). With one core it runs
+ * here, at the same place: the same sound */
+static int32_t fx_rvq[256];
+static uint32_t fx_rvq_n;
+static float fx_rvl[256], fx_rvr[256];         /* (core 1's return) */
+#if PERF_TEST
+static uint8_t fx_late_sw = 1;                 /* the timing page: PRESETS turns it off (the reverb as before) and on */
+#else
+#define fx_late_sw 1
+#endif
+static __typeof__(rv_p) fx_rvs;                 /* the reverb's settings at the end of the render fx_rvq comes from: a knob
+                                                 * turned since (main, between renders) waits for the next input */
+static float fx_rvs4[4];                        /* (fx_p's: rv_fb, rv_damp, rv_lvl, rv_hpa) */
+static uint8_t fx_rvs_ok;
+static void fx_rvs_swap(void)                   /* the settings playing <-> the held ones (only the reverb reads them
+                                                 * while core 1 works: main does not run, the ISR's kit waits) */
+{
+    __typeof__(rv_p) t = rv_p;
+    float f[4] = {fx_p.rv_fb, fx_p.rv_damp, fx_p.rv_lvl, fx_p.rv_hpa};
+    rv_p = fx_rvs; fx_rvs = t;
+    fx_p.rv_fb = fx_rvs4[0]; fx_p.rv_damp = fx_rvs4[1]; fx_p.rv_lvl = fx_rvs4[2]; fx_p.rv_hpa = fx_rvs4[3];
+    fx_rvs4[0] = f[0]; fx_rvs4[1] = f[1]; fx_rvs4[2] = f[2]; fx_rvs4[3] = f[3];
+}
+static void fx_c1_late(uint32_t n)
+{
+    uint32_t i, ok = fx_rvs_ok;
+    PF_C1_BEGIN();
+    for (i = 0; i < n; i++) fx_rvl[i] = fx_rvr[i] = 0.0f;
+    if (ok) fx_rvs_swap();
+    fx_reverb(fx_rvq, fx_rvl, fx_rvr, n);
+    if (ok) fx_rvs_swap();
+    PF_C1_END();
+}
+static void fx_late_start(void)                 /* app_audio, first thing */
+{
+    fx_late = fx_late_sw;
+    if (!fx_late) return;
+    if (cpu2_run(fx_c1_late, fx_rvq_n)) drum_c1_busy = 1;
+    else fx_c1_late(fx_rvq_n);                  /* (one core: here, now) */
+}
 #endif
 
 static void fx_render(int32_t *out, uint32_t n)
@@ -290,18 +357,42 @@ static void fx_render(int32_t *out, uint32_t n)
         }
         fx_rvbus = fx_rvin;
     }
+    PF_LAP(PF_FXIN);
 #ifdef DRUM_CPU2
-    if (cpu2_run(fx_c1_job, n)) {               /* the reverb there, the delay here into its own lines, added after:
-                                                 * each adds one term a sample, so the sum is the same bit for bit */
-        static float dl[256], dr[256];
+    if (fx_late) {                              /* the late reverb (fx_late_start): the delay here, then the reverb's return
+                                                 * and the delay's added in today's order (the same sums) */
+        float *dl = fx_dl, *dr = fx_dr;
+        uint32_t m = fx_rvq_n;
         for (i = 0; i < n; i++) dl[i] = dr[i] = 0.0f;
         fx_delay(drum_bus[1], dl, dr, fx_d2r, fx_d2r_w, n);
-        if (cpu2_wait() != 0) fx_reverb(fx_rvbus, l, r, n);   /* (it failed: here) */
+        if (drum_c1_busy) {                     /* (cpu2_wait never fails today: fm1_c1_fail stops all. With one core
+                                                 * as a fall-back, docs/dev/ONE-CORE.md, this needs one: fx_rvl here) */
+            (void)PF_WAIT(cpu2_wait(), PF_DLY, PF_RVW);
+            PF_C1(PF_RV1);
+            drum_c1_busy = 0;
+        }
+        for (i = 0; i < n && i < m; i++) { l[i] += fx_rvl[i]; r[i] += fx_rvr[i]; }
         for (i = 0; i < n; i++) { l[i] += dl[i]; r[i] += dr[i]; }
+        if (fx_rv_pend) { fx_apply_rv(fx_rv_pend); fx_rv_pend = 0; }
+        PF_LAP(PF_DLY);
+    } else if (cpu2_run(fx_c1_job, n)) {        /* the reverb there, the delay here into its own lines, added after:
+                                                 * each adds one term a sample, so the sum is the same bit for bit */
+        float *dl = fx_dl, *dr = fx_dr;
+        for (i = 0; i < n; i++) dl[i] = dr[i] = 0.0f;
+        fx_delay(drum_bus[1], dl, dr, fx_d2r, fx_d2r_w, n);
+        if (PF_WAIT(cpu2_wait(), PF_DLY, PF_RVW) != 0) fx_reverb(fx_rvbus, l, r, n);   /* (it failed: here) */
+        else PF_C1(PF_RV1);
+        for (i = 0; i < n; i++) { l[i] += dl[i]; r[i] += dr[i]; }
+        PF_LAP(PF_DLY);
     } else {
         fx_reverb(fx_rvbus, l, r, n);
         fx_delay(drum_bus[1], l, r, fx_d2r, fx_d2r_w, n);
     }
+    for (i = 0; i < n; i++) fx_rvq[i] = fx_rvbus[i];   /* the next render's reverb input, and its settings now */
+    fx_rvq_n = n;
+    fx_rvs = rv_p;
+    fx_rvs4[0] = fx_p.rv_fb; fx_rvs4[1] = fx_p.rv_damp; fx_rvs4[2] = fx_p.rv_lvl; fx_rvs4[3] = fx_p.rv_hpa;
+    fx_rvs_ok = rv_ready;
 #else
     fx_reverb(fx_rvbus, l, r, n);
     fx_delay(drum_bus[1], l, r, fx_d2r, fx_d2r_w, n);
@@ -357,6 +448,7 @@ static void fx_render(int32_t *out, uint32_t n)
             fx.s4[c] = fx_absf(s4) < 1e-20f ? 0.0f : s4;
         }
     }
+    PF_LAP(PF_MAST);
     {   /* the limiter: the gain each sample wants (ceiling / peak), the least over the look-ahead, a release, then a
          * box of FX_LA so the gain ramps down and reaches it as that sample leaves the delay. The least: q, the
          * window's places from the oldest, each one's gain under all the newer ones' (fx_lq_push), so the first is the
@@ -394,4 +486,5 @@ static void fx_render(int32_t *out, uint32_t n)
         }
         fx.li = (int32_t)li; fx.lhold = lhold; fx.lgr = lgr; fx.lsum = lsum;
     }
+    PF_LAP(PF_LIM);
 }

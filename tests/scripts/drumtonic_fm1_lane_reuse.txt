@@ -2,7 +2,8 @@
 # (127 0 127 0: a glide from each to the next); SD a ratchet on step 3. Playing, SD's channel is pasted on BD's (GLO
 # held copies it on SEQ, GLO + black 1, SEL: yes): BD's PITCH lane is freed and its place taken by the ratchet's at
 # once, between two steps. The glide of the lane that was there must stop: until 2026-11-17 it went on into the new one,
-# its ratchet's row of what plays now (past BD's 26 into SD's: SD's MOD mode set by BD's glide, until STOP).
+# its ratchet's row of what plays now (past BD's 26 into SD's: SD's MOD mode set by BD's glide, until STOP). Since
+# 2026-11-23 a ratchet is a mark, not a lane (motion.h): the lane is freed and the glide must stop all the same.
 # 120 BPM: PLAY at 1000, the second bar's steps 1-3 at 3000-3375 (BD gliding). Black 1 0x2 (BD), black 2 0x8 (SD).
 # (a first press only closes the opening)
 50 btn 8
@@ -30,9 +31,11 @@
 960 btn 10
 970 keys 0
 980 expect 2 ratch 0 1 2
-990 expect 2 lanes
+990 expect 1 lanes
+995 expect 1 marks
 1000 btn 12
 1500 expect -1 live 1 2
+1980 btn 7
 2000 btndown 7
 2400 keys 0x2
 2450 keys 0
@@ -63,12 +66,14 @@
 4500 enc 3 -120
 4550 keys 0
 4560 expect 127 lane 0 9 1 0
-4570 expect 3 lanes
+4570 expect 1 lanes
+4575 expect 2 marks
 4600 btn 11
 4650 keys 0x8
 4700 keys 0
 4710 expect 1 ch
 5000 btn 12
+5380 btn 7
 5400 btndown 7
 5800 keys 0x400000
 5850 keys 0

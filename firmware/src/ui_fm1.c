@@ -12,7 +12,7 @@
  *   4  a button opens one page; again, the next bank of knobs (the dots under the knobs). The open page's button is
  *      lit, the others that open something glow
  *   5  hold a step and turn: on SOUND a knob locks that step's value (a p-lock), ALGORITHM sets its condition
- *   6  combinations of three kinds only: GLO (held: copy; + a key: paste there; + REC: clear; + a knob: its motion and
+ *   6  combinations of three kinds only: GLO (let go alone: copy; + a key: paste there; + REC: clear; + a knob: its motion and
  *      LFO go; + a white key on MIX: save the kit), HOME + (a white key: a pattern from any page; a black key: solo;
  *      REC: the pattern as last saved), holding (a step; LFO + a knob puts an LFO on it; black 11 + whites). SEL
  *      held: FILL, as long as it is held
@@ -133,6 +133,7 @@ static struct {
     uint16_t nr_held, nr_new;                   /* (note repeat: the keys repeating at the last loop; pressed this loop) */
     uint32_t held_t;
     int8_t touched;
+    uint8_t touched_kind;                       /* (what knob touched was: knob_touched) */
     uint32_t touch_until;
     uint8_t ask, ask_a, ask_b;
     char ask_q[32];
@@ -143,12 +144,14 @@ static struct {
     uint8_t lib_row;
     float gr;                                   /* the COMP page's meter: dB of reduction, held and falling 20 dB/s */
     uint32_t gr_t;                            /* the library's row: SND_LIB's, then the user's (LIB_USER) */
-    uint32_t enc_t[7], enc_rate[7], djf_t, micro_t;   /* (micro_t: MICRO stopped at 0 then, 0: not) */
+    uint32_t enc_t[7], enc_rate[7], djf_t, micro_t, ramp_t;   /* (micro_t: MICRO stopped at 0 then, 0: not; ramp_t:
+                                                 * RAMP at FLAT) */
     uint32_t eat_b, eat_k;                      /* the buttons and keys that closed the opening: do nothing until released */
     uint32_t splash, splash_t, cpu;   /* splash: when the opening began (0: over); splash_t: its last frame */
     uint32_t h_top, h_mid, h_bot, h_led, h_midm, mid_t;   /* h_midm, mid_t: the middle band with its meters, when */
     uint32_t big_until;                         /* the big bubble (big()): until then, its two lines, grey: the first */
-    char big_l1[10], big_l2[10], copied[24];      /* copied: what GLO held copied, for its guide (0: nothing this hold) */
+    char big_l1[10], big_l2[10], copied[24];      /* copied: what GLO let go would copy, for its guide (0: nothing) */
+    char clip_name[17];                           /* what is copied: "STEP 3", "BD", "P1" (the guide's PASTE) */
     uint8_t big_grey;
     uint32_t guide_seen;                        /* the buttons whose guide showed in this press */
 } ui = {.held = -1, .chain_key = -1, .touched = -1};
@@ -165,7 +168,7 @@ static uint32_t len_ch(void) { return one_ch() ? set.ch : DRUM_NCH; }   /* whose
 static uint32_t len_now(uint32_t pat) { return one_ch() ? track_len(pat, set.ch) : pat_len(pat); }
 
 /* ---- the knobs: what each page's banks hold */
-enum { R_NONE, R_PARAM, R_LEVEL, R_FX, R_TEMPO, R_SWING, R_RATE, R_LFO, R_MICRO, R_NREP, R_QUANT };
+enum { R_NONE, R_PARAM, R_LEVEL, R_FX, R_TEMPO, R_SWING, R_RATE, R_LFO, R_MICRO, R_NREP, R_QUANT, R_RATCH, R_RAMP };
 typedef struct { uint8_t kind, a; } pref_t;
 typedef struct { const char *name; pref_t k[4]; } bank_t;
 #define PP(p) {R_PARAM, p}
@@ -203,6 +206,21 @@ static const struct { const bank_t *b; uint8_t n; const char *name; } VIEWS[NVIE
     {BANK_LIVE, 1, "LIVE"}, {BANK_SET, 1, "SETTINGS"}, {BANK_MIX, 1, "MIX"}, {BANK_STEPS, 1, "STEPS"},
     {BANK_SOUND, NSOUND, "SOUND"}, {BANK_LFO, 1, "LFO"}, {BANK_FX, NFXB, "FX"}, {BANK_SONG, 1, "SONG"}};
 static const bank_t *bank_now(void) { return &VIEWS[ui.view].b[ui.bank[ui.view] % VIEWS[ui.view].n]; }
+/* STEPS, a step held on one channel: knobs 3 and 4 are its RATCH (hits, 1..8) and RAMP (-100..+100 %) instead of
+ * REPEAT and QUANT (the user's choice, 2026-11-23: docs/dev/RATCHET-KNOB.md), as knob 2 is its MICRO */
+static const pref_t HELD_K[2] = {{R_RATCH, 0}, {R_RAMP, 0}};
+static const pref_t *knob_pref(uint32_t k)     /* knob k (0..3) as it is now */
+{
+    k &= 3u;
+    if (ui.view == V_STEPS && ui.held >= 0 && one_ch() && k >= 2u) return &HELD_K[k - 2u];
+    return &bank_now()->k[k];
+}
+static uint32_t knob_touched(const pref_t *r)  /* r is the knob turned (ui.touched) as it was: RATCH and RAMP turn
+                                                 * back into REPEAT and QUANT as the step is let go, and their bubble
+                                                 * goes (the others as before: the knob's place) */
+{
+    return r->kind == ui.touched_kind || (r->kind < R_RATCH && ui.touched_kind < R_RATCH);
+}
 
 static uint32_t is_mode(uint32_t p) { return p == P_WAVE || p == P_PMODE || p == P_NFILT || p == P_NENV; }
 static uint32_t is_switch(const pref_t *r)
@@ -261,6 +279,9 @@ static int32_t pref_get(const pref_t *r)
     case R_MICRO: return ui.held >= 0 && one_ch() ? micro_of(mot_get(pat, ch, P_MICRO, (uint32_t)ui.held)) : 0;
     case R_NREP: return ui.nr_rate;
     case R_QUANT: return (int32_t)quant_get(pat);
+    case R_RATCH: return ui.held >= 0 && one_ch() ? (int32_t)ratch_of(mot_get(pat, ch, P_RATCH, (uint32_t)ui.held)) : 1;
+    case R_RAMP: return ui.held >= 0 && one_ch() ? ramp_of(mot_get(pat, ch, P_RAMP, (uint32_t)ui.held)) : 0;   /* (-100
+                                                 * DOWN 100 % .. +100 UP 100 %) */
     }
     return 0;
 }
@@ -276,6 +297,8 @@ static uint32_t pref_bar(const pref_t *r)       /* 0..127 for the bar under the 
     case R_LFO: return r->a == 0 ? (uint32_t)v * 127u / 9u : r->a == 1 ? (uint32_t)v * 127u / 3u : r->a == 2 ? (uint32_t)(v + 100) * 127u / 200u : v ? 127u : 0u;
     case R_MICRO: return (uint32_t)(v + MICRO_MAX) * 127u / (2u * MICRO_MAX);
     case R_QUANT: return (uint32_t)v * 127u / 100u;
+    case R_RATCH: return (uint32_t)(v - 1) * 127u / (RATCH_MAX - 1u);
+    case R_RAMP: return (uint32_t)(v + RAMP_MAX) * 127u / (2u * RAMP_MAX);   /* (drawn from the middle: bar_draw) */
     }
     return (uint32_t)v;
 }
@@ -294,6 +317,8 @@ static const char *pref_name(const pref_t *r)
     case R_MICRO: return "MICRO";
     case R_NREP: return "REPEAT";
     case R_QUANT: return "QUANT";
+    case R_RATCH: return "RATCH";
+    case R_RAMP: return "RAMP";
     }
     return "";
 }
@@ -348,6 +373,15 @@ static void pref_text(char *s, const pref_t *r)
     case R_RATE: cat(s, RATE_N[v % SEQ_NRATE]); break;
     case R_NREP: cat(s, NR_NAME[(uint32_t)v % NR_N]); break;
     case R_QUANT: cat(catn(s, v), "%"); break;
+    case R_RATCH: catn(s, v); break;
+    case R_RAMP: {                              /* "-40%" "FLAT" "+40%" (the box and the bubble's big figure; the bubble
+                                                 * names it RAMP DOWN / UP: draw_bubble); one hit: no RAMP, - */
+        const pref_t h = {R_RATCH, 0};
+        if (pref_get(&h) < 2) cat(s, "-");
+        else if (!v) cat(s, "FLAT");
+        else cat(catn(cat(s, v > 0 ? "+" : ""), v), "%");
+        break;
+    }
     case R_LFO:
         if (!l->used) { cat(s, "-"); break; }
         if (r->a == 0) cat(s, (l->sync ? LFO_SYNC_N : LFO_HZ_N)[v % LFO_NRATE]);
@@ -371,8 +405,10 @@ static uint32_t knob_span(const pref_t *r)      /* the values a knob goes throug
     case R_LEVEL: return 128u;
     case R_FX: return is_switch(r) ? 0u : FX_P[r->a].max + 1u;
     case R_LFO: return r->a == 2u ? 128u : 0u;  /* (its depth) */
+    case R_RAMP: return 128u;                   /* (201 values, as LFO's depth: up to x6) */
     case R_QUANT: return 101u;
-    default: return 0u;                         /* (TEMPO: a BPM a click, always; SWING, RATE, MICRO, REPEAT: few) */
+    default: return 0u;                         /* (TEMPO: a BPM a click, always; SWING, RATE, MICRO, REPEAT, RATCH:
+                                                 * few) */
     }
 }
 #define ACC_SLOW 12u                            /* clicks a second: up to it one step a click */
@@ -484,6 +520,33 @@ static void pref_set(const pref_t *r, int32_t e)
         }
         micro_held_set(v);
         return;
+    case R_RATCH:                               /* the step held's hits, one a click, 1..8 (no round: ARP's goes round);
+                                                 * back to 1, its RAMP goes too (motion.c) */
+        if (ui.held < 0 || !one_ch()) return;
+        v = pref_get(r) + e;
+        v = v < 1 ? 1 : v > (int32_t)RATCH_MAX ? (int32_t)RATCH_MAX : v;
+        if (mot_set(pat, set.ch, P_RATCH, (uint32_t)ui.held, v > 1 ? (uint32_t)v : MOT_NONE)) say("MOTION FULL");
+        ui.held_used = 1;
+        return;
+    case R_RAMP:                                /* its RAMP, 1 % a click (spun, faster: accel), DOWN 100 % .. FLAT ..
+                                                 * UP 100 % (the user 2026-11-24: without steps, both ways; until then
+                                                 * five); it stops at FLAT on its way across, as MICRO; one hit: none */
+        if (ui.held < 0 || !one_ch()) return;
+        ui.held_used = 1;
+        if (ratch_of(mot_get(pat, set.ch, P_RATCH, (uint32_t)ui.held)) < 2u) { say("RATCH FIRST"); return; }
+        v = pref_get(r);
+        if (v != 0 && ((v < 0) != (v + e < 0) || v + e == 0)) {
+            v = 0;                              /* (stopped at FLAT: turning on, within 0.35 s, stays there) */
+            ui.ramp_t = fm1_ms | 1u;
+        } else if (v == 0 && ui.ramp_t && fm1_ms - ui.ramp_t < 350u) {
+            ui.ramp_t = fm1_ms | 1u;
+            return;
+        } else {
+            ui.ramp_t = 0;
+            v += e;
+        }
+        if (mot_set(pat, set.ch, P_RAMP, (uint32_t)ui.held, ramp_val(v))) say("MOTION FULL");
+        return;
     case R_LFO:
         if (!l->used) { say("HOLD LFO, TURN A KNOB"); return; }
         if (r->a == 0) { v = l->rate + (e > 0 ? 1 : -1); l->rate = (uint8_t)(v < 0 ? 0 : v >= (int32_t)LFO_NRATE ? LFO_NRATE - 1u : (uint32_t)v); }
@@ -588,7 +651,7 @@ static void nr_keys(void)                       /* each loop: the channels repea
 
 static void knob_turn(uint32_t k, int32_t n)
 {
-    const pref_t *r = &bank_now()->k[k & 3u];
+    const pref_t *r = knob_pref(k);
     uint32_t pat = cur_pat();
     char s[32];
     if (ui.btn >> BTN_ARP & 1u) ui.btn_used |= 1u << BTN_ARP;   /* (a knob with ARP held: ARP's tap does nothing) */
@@ -602,6 +665,7 @@ static void knob_turn(uint32_t k, int32_t n)
     if (ui.ask || r->kind == R_NONE) return;
     ui.turn_t = fm1_ms;
     ui.touched = (int8_t)k;
+    ui.touched_kind = r->kind;
     ui.touch_until = fm1_ms + 1000u;            /* (the knob lit, and its bubble, until 1 s after the last click) */
     ui.big_until = 0;
     if (ui.btn >> BTN_GLO & 1u) {               /* GLO + a knob: its motion (on the step held: its lock) and LFO go */
@@ -660,21 +724,6 @@ static char *micro_text(char *s, uint32_t v)    /* a step's micro timing: "+5/24
     if (!m) return s;
     return cat(catn(cat(s, m > 0 ? "+" : "-"), m > 0 ? m : -m), "/24");
 }
-static uint32_t cond_pos_val(int32_t pos)       /* the condition line, one place a read: 0 = 100 %, +1..+19 = 95..5 %,
-                                                 * -1 FILL, -2 NOT FILL (near: live), -3..-37 the cycles 1:2 .. 8:8 */
-{
-    if (!pos) return MOT_NONE;
-    if (pos > 0) return 100u - 5u * (uint32_t)pos;
-    if (pos >= -2) return pos == -1 ? COND_FILL : COND_NFILL;
-    return COND_CYC + (uint32_t)(-pos - 3);
-}
-static int32_t cond_val_pos(uint32_t c)
-{
-    if (c == MOT_NONE || c == 100u) return 0;
-    if (c < 100u) return (int32_t)(100u - c) / 5;
-    if (c >= COND_FILL) return c == COND_FILL ? -1 : -2;
-    return -(int32_t)(c - COND_CYC) - 3;
-}
 
 static void sel_channel(int32_t n)
 {
@@ -688,6 +737,9 @@ static void sel_channel(int32_t n)
 }
 
 enum { ROW_CLOCK, ROW_REC, ROW_CLEAR, ROW_FACTORY, ROW_CPU, ROW_VER, NROW };   /* (CPU MODE until 2026-11-12: 2 x 320 MHz always) */
+#if PERF_TEST                                   /* the timing build: SETTINGS > CPU, SEL opens the audio's times (perf.h) */
+static uint8_t pf_on, pf_page;                  /* the page open; 0 the voices, 1 the effects (ALGORITHM) */
+#endif
 static void list_value(int32_t d)               /* SETTINGS: ALGORITHM on the row */
 {
     if (ui.row == ROW_CLOCK) {
@@ -711,7 +763,7 @@ static void kit_follow(void);                   /* (below: each pattern's kit; P
 /* ---- SONG: writing a song (song mode step 6, docs/dev/SONG-MODE.md 10.3). The pattern keys do on the element chosen
  * what they do on LIVE, without launching: a tap, that pattern; a key held and others tapped, that chain (written as
  * the first is let go); on END, a new element x1 (END stays chosen: the next key adds another, the user, 2026-11-17).
- * ALGORITHM: its times, on END LOOP / STOP; knob 1: the song's tempo; GLO held copies the element, GLO + SEL inserts
+ * ALGORITHM: its times, on END LOOP / STOP; knob 1: the song's tempo; GLO let go copies the element, GLO + SEL inserts
  * the copy here, GLO + REC deletes it, on END the whole song after CLEAR SONG 2? (the user, 2026-11-17). Not in undo
  * (the study, 4.5). 64 patterns a song: SONG FULL (a chain longer than what is left is cut there, and it says so) */
 static struct { arr_slot_t s[ARR_ELMAX]; uint8_t n; } song_clip;   /* GLO's copy of an element */
@@ -788,16 +840,15 @@ static void song_tempo(int32_t d)               /* knob 1: the song's tempo */
     arr_dirty = 1;
     if (song_on == (int8_t)ui.song) song_tempo_now(a);   /* (the song on: TEMPO is its tempo) */
 }
-static void song_copy(void)                     /* GLO held: the element chosen (END: nothing) */
+static void song_copy(void)                     /* GLO let go: the element chosen (END: nothing) */
 {
     arr_t *a = song_now();
     uint32_t f, i;
-    if (ui.el >= arr_nel(a)) { ui.copied[0] = 0; return; }
+    if (ui.el >= arr_nel(a)) return;
     f = arr_first(a, ui.el);
     song_clip.n = (uint8_t)arr_len(a, ui.el);
     for (i = 0; i < song_clip.n; i++) song_clip.s[i] = a->s[f + i];
     ui.clip_kind = CB_EL;
-    catn(cat(ui.copied, "COPIED ROW "), (int32_t)ui.el + 1);
 }
 static void song_insert(void)                   /* GLO + SEL: the copy, here (the elements from here move down) */
 {
@@ -1239,6 +1290,14 @@ static void enc_left(uint32_t e, int32_t n)
         }
         return;
     }
+#if PERF_TEST
+    if (ui.view == V_SET && pf_on) {            /* (PRESETS: the late reverb on, off: A / B) */
+        if (e == ENC_SELECT) pf_on = 0;
+        else if (e == ENC_ALGORITHM) pf_page = n > 0;
+        else if (e == ENC_PRESETS) fx_late_sw = n > 0;
+        return;
+    }
+#endif
     if (e == ENC_SELECT) {
         if (ui.view == V_SET) { int32_t r = (int32_t)ui.row + n; ui.row = (uint8_t)(r < 0 ? 0 : r >= NROW ? NROW - 1 : r); }
         else if (ui.view == V_LFO) { int32_t r = (int32_t)ui.lfo_sel + n; ui.lfo_sel = (uint8_t)(r < 0 ? 0 : r >= (int32_t)NLFO ? NLFO - 1u : (uint32_t)r); }
@@ -1284,7 +1343,8 @@ static void enc_left(uint32_t e, int32_t n)
         if (ui.held >= 0 && one_ch() && (ui.view == V_STEPS || ui.view == V_SOUND)) {   /* the step's condition */
             int32_t pos = cond_val_pos(mot_get(pat, set.ch, P_COND, (uint32_t)ui.held)) + (n > 0 ? 1 : -1);
             char s[24];
-            pos = pos > 19 ? 19 : pos < -37 ? -37 : pos;
+            pos = pos > COND_POS_MAX ? COND_POS_MAX : pos < COND_POS_MIN ? COND_POS_MIN : pos;   /* (the line:
+                                                 * motion.h cond_pos_val) */
             if (mot_set(pat, set.ch, P_COND, (uint32_t)ui.held, cond_pos_val(pos))) say("MOTION FULL");
             cond_text(cat(catn(cat(s, "STEP "), ui.held + 1), ": "), cond_pos_val(pos));
             say(s);
@@ -1298,31 +1358,37 @@ static void enc_left(uint32_t e, int32_t n)
     }
 }
 
-/* ---- copy, paste, clear (GLO) */
-static void copy_now(void)
+/* ---- copy, paste, clear (GLO): GLO let go, nothing else pressed with it, copies (the user's choice, 2026-11-25: until
+ * then GLO held 250 ms copied, so holding it to paste a step on another channel copied that channel over the step) */
+static void copy_label(char *s)                 /* what GLO let go copies here: "COPIED STEP 3" (nothing: "") */
 {
-    char s[32];
+    s[0] = 0;
+    if (ui.view == V_SONG) { if (ui.el < arr_nel(song_now())) catn(cat(s, "COPIED ROW "), (int32_t)ui.el + 1); }
+    else if (ui.view == V_LFO) catn(cat(s, "COPIED LFO "), ui.lfo_sel + 1);
+    else if ((ui.view == V_STEPS || ui.view == V_SOUND) && one_ch() && ui.held >= 0) catn(cat(s, "COPIED STEP "), ui.held + 1);
+    else if (ui.view == V_STEPS && one_ch()) cat(cat(s, "COPIED "), kit.ch[set.ch]);
+    else if (ui.view == V_SOUND && one_ch()) cat(cat(cat(s, "COPIED "), kit.ch[set.ch]), " SOUND");
+    else catn(cat(s, "COPIED P"), (int32_t)cur_pat() + 1);
+}
+static void copy_now(void)                      /* GLO let go: copy, and say it (COPIED / STEP 3) */
+{
     uint32_t pat = cur_pat();
-    if (ui.view == V_SONG) { song_copy(); return; }
-    ui.clip_pat = (uint8_t)pat; ui.clip_ch = set.ch;
-    if (ui.view == V_LFO) {
-        ui.clip_kind = CB_LFO; ui.clip_lfo = ui.lfo_sel;
-        catn(cat(s, "COPIED LFO "), ui.lfo_sel + 1);
-    } else if ((ui.view == V_STEPS || ui.view == V_SOUND) && one_ch() && ui.held >= 0) {
-        ui.clip_kind = CB_STEP; ui.clip_step = (uint8_t)ui.held;
-        ui.held_used = 1;
-        catn(cat(s, "COPIED STEP "), ui.held + 1);
-    } else if (ui.view == V_STEPS && one_ch()) {
-        ui.clip_kind = CB_TRACK;
-        cat(cat(s, "COPIED "), kit.ch[set.ch]);
-    } else if (ui.view == V_SOUND && one_ch()) {
-        ui.clip_kind = CB_SOUND;
-        cat(cat(cat(s, "COPIED "), kit.ch[set.ch]), " SOUND");
-    } else {
-        ui.clip_kind = CB_PAT;
-        catn(cat(s, "COPIED P"), (int32_t)pat + 1);
+    copy_label(ui.copied);
+    if (!ui.copied[0]) { big("NOTHING", "TO COPY", 1); return; }   /* (SONG's END) */
+    if (ui.view == V_SONG) song_copy();
+    else {
+        ui.clip_pat = (uint8_t)pat; ui.clip_ch = set.ch;
+        if (ui.view == V_LFO) { ui.clip_kind = CB_LFO; ui.clip_lfo = ui.lfo_sel; }
+        else if ((ui.view == V_STEPS || ui.view == V_SOUND) && one_ch() && ui.held >= 0) {
+            ui.clip_kind = CB_STEP; ui.clip_step = (uint8_t)ui.held;
+            ui.held_used = 1;
+        }
+        else if (ui.view == V_STEPS && one_ch()) ui.clip_kind = CB_TRACK;
+        else if (ui.view == V_SOUND && one_ch()) ui.clip_kind = CB_SOUND;
+        else ui.clip_kind = CB_PAT;
     }
-    memcpy(ui.copied, s, sizeof ui.copied);    /* (the guide says it, while GLO is held) */
+    memcpy(ui.clip_name, ui.copied + 7, sizeof ui.clip_name - 1u);   /* (the guide's PASTE says it) */
+    big("COPIED", ui.copied + 7, 0);
 }
 static void paste_white(uint32_t w)
 {
@@ -1346,8 +1412,8 @@ static void paste_white(uint32_t w)
     if (ui.clip_kind == CB_STEP && (ui.view == V_STEPS || ui.view == V_SOUND) && one_ch()) {
         uint32_t st = ui.spage * 16u + w;
         seq_set(pat, set.ch, st, seq_get(ui.clip_pat, ui.clip_ch, ui.clip_step));
-        mot_copy_step(ui.clip_pat, ui.clip_ch, ui.clip_step, pat, st);
-        big_n("PASTE", "STEP ", (int32_t)st + 1);
+        if (mot_copy_step(ui.clip_pat, ui.clip_ch, ui.clip_step, pat, set.ch, st)) big("MOTION", "FULL", 1);
+        else big_n("PASTE", "STEP ", (int32_t)st + 1);
         return;
     }
     if (ui.clip_kind == CB_LFO && ui.view == V_LFO && w < NLFO) {
@@ -1630,11 +1696,11 @@ static void btn_down(uint32_t i)
     ui.down_t[i] = fm1_ms;
     ui.help = 0;
     ui.guide_seen &= ~(1u << i);
-    if (i == BTN_GLO) ui.copied[0] = 0;
     if (undo_combo(i)) { ui.btn_used |= 1u << i | 1u << BTN_HOME; undo_key(i == BTN_OCT_UP ? 1 : -1); return; }
     if (i == BTN_ARP && ui.held >= 0 && (ui.view == V_STEPS || ui.view == V_SOUND) && one_ch() && !ui.ask) {
-        uint32_t pat = cur_pat(), n = ratch_of(mot_get(pat, set.ch, P_RATCH, (uint32_t)ui.held)) % 4u + 1u;
-        ui.btn_used |= 1u << i;                 /* a step held + ARP: its ratchet, 1 2 3 4 1 .. hits in the step */
+        uint32_t pat = cur_pat(), n = ratch_of(mot_get(pat, set.ch, P_RATCH, (uint32_t)ui.held)) % RATCH_MAX + 1u;
+        ui.btn_used |= 1u << i;                 /* a step held + ARP: its ratchet, 1 2 .. 8 1 .. hits in the step (1..4
+                                                 * until 2026-11-23) */
         ui.held_used = 1;
         if (mot_set(pat, set.ch, P_RATCH, (uint32_t)ui.held, n > 1u ? n : MOT_NONE)) big("MOTION", "FULL", 1);
         else big_n("RATCHET", "", (int32_t)n);
@@ -1684,6 +1750,9 @@ static void btn_down(uint32_t i)
         }
         if (ui.view == V_SET) {
             ui.btn_used |= 1u << i;
+#if PERF_TEST
+            if (ui.row == ROW_CPU) { pf_on = !pf_on; return; }
+#endif
             if (ui.row == ROW_CLEAR) { if (pat_used(cur_pat())) ask(A_CLEAR_PAT, cur_pat(), 0, "CLEAR THE PATTERN?"); }
             else if (ui.row == ROW_FACTORY) ask(A_FACTORY, 0, 0, "FACTORY KITS IN 1-3?");
             else list_value(1);
@@ -1694,12 +1763,13 @@ static void btn_down(uint32_t i)
 }
 static void btn_up(uint32_t i)
 {
-    uint32_t used = ui.btn_used >> i & 1u, held = fm1_ms - ui.down_t[i];
+    uint32_t used = ui.btn_used >> i & 1u;
     ui.btn &= ~(1u << i);
     if (i == BTN_SEL) ui.fill = mot_fill = 0;
     if (ui.help == i + 1u) { ui.help = 0; return; }
     if (used) return;
-    if (ui.guide_seen >> i & 1u) return;        /* (its guide was read: letting go does nothing else) */
+    if (ui.guide_seen >> i & 1u && i != BTN_GLO) return;   /* (its guide was read: letting go does nothing else; GLO
+                                                 * still copies, as its guide says) */
     if (ui.ask) {
         if (i == BTN_HOME) { ui.ask = 0; say("NO"); }
         return;
@@ -1714,7 +1784,7 @@ static void btn_up(uint32_t i)
     case BTN_EDIT: open_view(V_SOUND); break;
     case BTN_LFO: open_view(V_LFO); break;
     case BTN_FX: open_view(V_FX); break;
-    case BTN_GLO: if (held < 250u) say("HOLD GLO: COPY"); break;
+    case BTN_GLO: copy_now(); break;            /* (nothing else pressed with it) */
     case BTN_SAVE:
         save_req = 1;
         say("SAVING...");
@@ -1751,7 +1821,7 @@ static void btn_up(uint32_t i)
     }
     }
 }
-static void ui_saved(int rc) { say(rc ? "SAVE FAILED" : "SAVED"); }
+static void ui_saved(int rc) { say(rc ? "SAVE FAILED" : "SAVED"); }   /* (QUANT always fits since SNG4, app_fm1.c) */
 
 /* ---- the help cards: a button held alone for 0.9 s */
 /* ---- input, once a loop */
@@ -1811,6 +1881,9 @@ static void ui_input(void)
         ui.splash = 0; lcd_fill(0, 0, 240, 240, B_BG); ui.h_top = ui.h_mid = ui.h_bot = ~0u;
         ui.eat_b |= b; ui.eat_k |= kp;
     }
+    if (song_lost && !ui.splash && !ui.ask) { song_lost = 0; big("MOTION", "FULL", 1); }   /* (the patterns loaded
+                                                 * without all their motion: said once the opening closes, or a
+                                                 * restore's question, before a SAVE makes it final) */
     b &= ~ui.eat_b; kp &= ~ui.eat_k;
     i = rel & ui.eat_b; rel &= ~ui.eat_b; ui.eat_b &= ~i;
     i = kr & ui.eat_k; kr &= ~ui.eat_k; ui.eat_k &= ~i;
@@ -1834,7 +1907,7 @@ static void ui_input(void)
                                                  ui.held >= 0 ? "COND" : "SHIFT") : "EDIT");
                 enc_left(i, n);
             } else {
-                const pref_t *r = &bank_now()->k[(i - ENC_KNOB1) & 3u];
+                const pref_t *r = knob_pref(i - ENC_KNOB1);
                 if (ui.view == V_SONG) {        /* SONG: knob 1 the song's tempo (one a click, as TEMPO), the others
                                                  * nothing; not in undo */
                     if (i == ENC_KNOB1 && !ui.ask && !sr_busy()) song_tempo(n);
@@ -1849,12 +1922,9 @@ static void ui_input(void)
             if (!(ui.btn_used >> i & 1u)) undo_event(i == BTN_REC ? UK_REC : UK_BTN + i, UNDO_PRESS, (i == BTN_OCT_DOWN || i == BTN_OCT_UP) ? "MICRO" : "EDIT");
             btn_up(i);
         }
-    /* GLO alone for 250 ms: copy (any button alone that long: its guide, guide_btn) */
+    /* GLO held, nothing else pressed with it: its guide says what letting it go copies (with a step held: that step) */
     for (i = 0; i < PANEL_NBTN; i++) if (ui.btn >> i & 1u) { n1++; first = i; }
-    if (n1 == 1u && !(ui.btn_used >> first & 1u) && (int32_t)(ui.turn_t - ui.down_t[first]) <= 0 && !ui.keys && !ui.ask) {
-        uint32_t t = fm1_ms - ui.down_t[first];
-        if (first == BTN_GLO && t >= 250u) { ui.btn_used |= 1u << BTN_GLO; copy_now(); }
-    }
+    if (n1 == 1u && first == BTN_GLO && !(ui.btn_used >> BTN_GLO & 1u)) copy_label(ui.copied);
     if (mot_prev && (!lib_on() || mot_prev_ch != set.ch)) lib_end();   /* the library left, another channel: its own sound */
     undo_check(ev);                             /* (also: GLO held 250 ms copies, nothing changed) */
     nr_keys();
@@ -1882,7 +1952,8 @@ static int32_t guide_btn(void)                  /* a button held alone for 250 m
                                                  * page; -1 none (SEL, PLAY, REC: none, they act as they are held / pressed) */
 {
     uint32_t b;
-    if (ui.ask || ui.keys || fm1_ms < ui.big_until || fm1_ms < ui.touch_until) return -1;
+    if (ui.ask || (ui.keys && !(ui.held >= 0 && ui.btn == 1u << BTN_GLO)) || fm1_ms < ui.big_until ||
+        fm1_ms < ui.touch_until) return -1;     /* (GLO with a step held: its guide too, COPIED STEP 3, 2026-11-25) */
     for (b = 0; b < PANEL_NBTN; b++)
         if (ui.btn == 1u << b) {
             if (b == BTN_SEL || b == BTN_PLAY || b == BTN_REC) return -1;
@@ -1892,9 +1963,15 @@ static int32_t guide_btn(void)                  /* a button held alone for 250 m
     return -1;
 }
 typedef struct { const char *k, *a; } grow_t;
+static const char *paste_txt(char *d, uint32_t kind)   /* GLO's guide: "PASTE STEP 3" when the copy is of that kind */
+{
+    if (ui.clip_kind != kind || !ui.clip_name[0]) return "PASTE";
+    cat(cat(d, "PASTE "), ui.clip_name);
+    return d;
+}
 static uint32_t guide_rows(uint32_t b, grow_t *r)   /* with the button held, here: the key, what it does; most used first */
 {
-    static char rec_a[16];
+    static char rec_a[16], pw[24], pb[24];
     uint32_t n = 0;
     switch (b) {                                /* TAP: what a press does; the rest, what goes with it */
     case BTN_HOME:
@@ -1944,18 +2021,20 @@ static uint32_t guide_rows(uint32_t b, grow_t *r)   /* with the button held, her
         return n;
     }
     if (ui.view == V_LFO) {
-        r[n++] = (grow_t){"WHITE", "PASTE"}; r[n++] = (grow_t){"REC", "CLEAR"}; r[n++] = (grow_t){"KNOB", "LFO OFF"};
+        r[n++] = (grow_t){"WHITE", paste_txt(pw, CB_LFO)}; r[n++] = (grow_t){"REC", "CLEAR"}; r[n++] = (grow_t){"KNOB", "LFO OFF"};
     } else if ((ui.view == V_STEPS || ui.view == V_SOUND) && one_ch() && ui.held >= 0) {
-        r[n++] = (grow_t){"WHITE", "PASTE"}; r[n++] = (grow_t){"REC", "CLEAR"}; r[n++] = (grow_t){"KNOB", "ITS LOCK"};
-    } else if (ui.view == V_STEPS && one_ch()) {
-        cat(cat(rec_a, "CLEAR "), kit.ch[set.ch]);
-        r[n++] = (grow_t){"BLACK", "PASTE"}; r[n++] = (grow_t){"REC", rec_a}; r[n++] = (grow_t){"KNOB", "ITS MOTION"};
-    } else if (ui.view == V_SOUND && one_ch()) {
-        r[n++] = (grow_t){"BLACK", "PASTE"}; r[n++] = (grow_t){"REC", "ALL MOTION"}; r[n++] = (grow_t){"KNOB", "ITS MOTION"};
+        r[n++] = (grow_t){"WHITE", paste_txt(pw, CB_STEP)}; r[n++] = (grow_t){"REC", "CLEAR"};
+        r[n++] = (grow_t){"KNOB", "ITS LOCK"};
+    } else if ((ui.view == V_STEPS || ui.view == V_SOUND) && one_ch()) {   /* (a step copied: WHITE pastes it here too) */
+        if (ui.clip_kind == CB_STEP) r[n++] = (grow_t){"WHITE", paste_txt(pw, CB_STEP)};
+        if (ui.view == V_STEPS) cat(cat(rec_a, "CLEAR "), kit.ch[set.ch]);
+        r[n++] = (grow_t){"BLACK", paste_txt(pb, ui.view == V_STEPS ? CB_TRACK : CB_SOUND)};
+        r[n++] = (grow_t){"REC", ui.view == V_STEPS ? rec_a : "ALL MOTION"};
+        if (ui.clip_kind != CB_STEP) r[n++] = (grow_t){"KNOB", "ITS MOTION"};
     } else {
         if (ui.view == V_MIX) catn(cat(rec_a, "ERASE KIT "), (int32_t)kit_cur + 1);
         else catn(cat(rec_a, "CLEAR P"), (int32_t)cur_pat() + 1);
-        r[n++] = (grow_t){"WHITE", ui.view == V_MIX ? "SAVE KIT" : "PASTE"}; r[n++] = (grow_t){"REC", rec_a};
+        r[n++] = (grow_t){"WHITE", ui.view == V_MIX ? "SAVE KIT" : paste_txt(pw, CB_PAT)}; r[n++] = (grow_t){"REC", rec_a};
     }
     return n;
 }
@@ -1981,11 +2060,63 @@ static void draw_guide(uint32_t b)              /* the bubble's frame; a row a g
     }
 }
 static uint32_t list_full(void) { return list_view() && !ui.help && !ui.ask && guide_btn() < 0; }   /* the list over both bands */
+#if PERF_TEST
+/* the timing page (the user's choice, 2026-11-23: two pages in the list's font, microseconds; ALGORITHM turns, SEL or
+ * SELECT closes): a part a line, its mean over a second and its value in that second's longest render; at the foot
+ * what the effects run, so a photo says which reverb it was */
+static void draw_pf(void)
+{
+    static const char *const NM[2][7] = {{"SEQ+MOTION", "HITS", "VOICES C0", "WAIT C1", "VOICES C1", "BLOCK LIM", "TOTAL"},
+                                         {"FX IN", "DELAY", "WAIT REV", "REVERB C1", "MASTER", "LIMITER", "OTHER"}};
+    static const uint8_t PK[2][7] = {{PF_SEQ, PF_HITS, PF_V0, PF_VW, PF_V1, PF_BLIM, PF_TOT},
+                                     {PF_FXIN, PF_DLY, PF_RVW, PF_RV1, PF_MAST, PF_LIM, PF_OTHER}};
+    volatile uint32_t (*b)[PF_N];
+    uint32_t k, half, pg = pf_page & 1u;
+    char s[48], *p;
+#ifdef PERF_DEMO
+    pf_demo();
+#endif
+    b = pf_pub[pf_seq & 1u];
+    p = cat(cat(s, fx_late_sw ? "LATE " : "NOW "), FX_RVT_N[rv_p.type % RV_NTYPE]);   /* (round 2: short, all of it fits:
+                                                 * R TO REV %, T tape, P ping, D drive, C comp, F filter) */
+    if (fx_p.dl_rv > 0.0f) p = catn(cat(p, " R"), (int32_t)(fx_p.dl_rv * 100.0f + 0.5f));
+    if (fx_p.tape | fx_p.ping | (fx_p.drive > 0.0f) | fx_p.c_on | fx_p.f_mode) p = cat(p, " ");
+    if (fx_p.tape) p = cat(p, "T");
+    if (fx_p.ping) p = cat(p, "P");
+    if (fx_p.drive > 0.0f) p = cat(p, "D");
+    if (fx_p.c_on) p = cat(p, "C");
+    if (fx_p.f_mode) p = cat(p, "F");
+    for (half = 0; half < 2u; half++) {
+        cv_begin(240, LIST_STRIP, B_BG);
+        cv_oy = -(int32_t)(half * LIST_STRIP);
+        tx(8, 4, &FONT_S, pg ? "EFFECTS 2/2" : "VOICES 1/2", B_SEC, B_BG);
+        txr(166, 4, &FONT_S, "MEAN us", B_SEC, B_BG);
+        txr(230, 4, &FONT_S, "PEAK", B_SEC, B_BG);
+        for (k = 0; k < 7u; k++) {
+            int32_t y = 22 + (int32_t)k * 24;
+            uint16_t bg = PK[pg][k] == PF_TOT ? B_ACT : B_BOX;
+            char v[12];
+            box(2, y, 236, 23, bg);
+            tx(8, y + 1, &FONT_SB, NM[pg][k], B_TXT, bg);
+            catn(v, (int32_t)b[0][PK[pg][k]]);
+            txr(166, y + 1, &FONT_SB, v, B_TXT, bg);
+            catn(v, (int32_t)b[1][PK[pg][k]]);
+            txr(230, y + 1, &FONT_SB, v, B_TXT, bg);
+        }
+        tx(8, 22 + 7 * 24 + 4, &FONT_S, s, B_SEC, B_BG);
+        cv_oy = 0;
+        cv_blit(0, half * LIST_STRIP);
+    }
+}
+#endif
 static void draw_set(void)
 {
     static const char *const RN[NROW] = {"CLOCK", "REC", "CLEAR PATTERN", "FACTORY KITS", "CPU", "VERSION"};
     uint32_t k, half;
     char s[24];
+#if PERF_TEST
+    if (pf_on) { draw_pf(); return; }
+#endif
     for (half = 0; half < 2u; half++) {
         cv_begin(240, LIST_STRIP, B_BG);
         cv_oy = -(int32_t)(half * LIST_STRIP);
@@ -2135,8 +2266,8 @@ static const pref_t *bubble_knob(void)          /* the knob turned less than 1 s
 {
     const pref_t *r;
     if (fm1_ms >= ui.touch_until || ui.touched < 0 || ui.help || ui.ask || list_view()) return 0;
-    r = &bank_now()->k[ui.touched & 3];
-    return r->kind == R_NONE ? 0 : r;
+    r = knob_pref((uint32_t)ui.touched);
+    return r->kind == R_NONE || !knob_touched(r) ? 0 : r;
 }
 static const felucca_font_t *huge_f(char c) { return c >= '@' ? &FONT_HUGEL : &FONT_HUGE; }   /* (88 px in two halves) */
 static int32_t huge_w(const char *s)
@@ -2153,14 +2284,33 @@ static void draw_big_bubble(void)               /* big(): two words, big (as the
     txc(120, 9, &FONT_BIG, ui.big_l1, ui.big_grey ? B_SEC : B_TXT, B_ACT);
     txc(120, 67, &FONT_BIG, ui.big_l2, B_TXT, B_ACT);
 }
+static void bar_draw(int32_t x, int32_t y, int32_t w, int32_t h, int32_t lo, const pref_t *r)   /* a knob's bar: its
+                                                 * track, its value from the left (lo px at least); RAMP's from the
+                                                 * middle, left DOWN, right UP (lo px at least), FLAT a mark in the
+                                                 * middle (the user 2026-11-24) */
+{
+    int32_t f = (int32_t)(pref_bar(r) * (uint32_t)w / 127u), m = w / 2, d, v;
+    cv_rect(x, y, w, h, B_TRACK);
+    if (r->kind != R_RAMP) { cv_rect(x, y, f < lo ? lo : f, h, bar_col(r)); return; }
+    v = pref_get(r);
+    d = v * m / RAMP_MAX;
+    if (v && d > -lo && d < lo) d = v < 0 ? -lo : lo;
+    if (d < 0) cv_rect(x + m + d, y, -d, h, bar_col(r));
+    else if (d > 0) cv_rect(x + m, y, d, h, bar_col(r));
+    else cv_rect(x + m - 1, y, 2, h, bar_col(r));
+}
 static void draw_bubble(const pref_t *r)        /* over the page: the knob's name and its value, as big as it fits, its bar */
 {
     char s[16];
     int32_t w, x;
     box(2, 0, 236, MID_C, B_TXT);
     box(4, 2, 232, MID_C - 4, B_ACT);
-    txc(120, 7, &FONT_LB, pref_name(r), B_SEC, B_ACT);
     pref_text(s, r);
+    if (r->kind == R_RAMP && pref_get(r) && s[1])   /* DOWN 40 %: "RAMP DOWN" over a big "-40%", pref_text's (the
+                                                 * sign too, the user 2026-11-25; "DOWN 100%" big is wider than the
+                                                 * bubble; one hit: "-") */
+        txc(120, 7, &FONT_LB, pref_get(r) < 0 ? "RAMP DOWN" : "RAMP UP", B_TXT, B_ACT);
+    else txc(120, 7, &FONT_LB, pref_name(r), B_SEC, B_ACT);
     if (ui.view == V_FX && ui.bank[V_FX] % NFXB == B_COMP) {   /* COMP: the value smaller, and the reduction as you turn */
         int32_t g10 = (int32_t)(ui.gr * 10.0f + 0.5f), gw = (int32_t)(ui.gr * 200.0f / 24.0f);   /* (the meter's 24 dB) */
         txc(120, 23, &FONT_BIG, s, B_TXT, B_ACT);
@@ -2182,9 +2332,7 @@ static void draw_bubble(const pref_t *r)        /* over the page: the knob's nam
     } else {
         txc(120, 43, &FONT_BIG, s, B_TXT, B_ACT);
     }
-    cv_rect(20, 110, 200, 6, B_TRACK);
-    w = (int32_t)(pref_bar(r) * 200u / 127u);
-    cv_rect(20, 110, w < 4 ? 4 : w, 6, bar_col(r));
+    bar_draw(20, 110, 200, 6, 4, r);
 }
 #define SP_X 40                                 /* STEPS: which 16 steps are shown, over the grid's columns */
 #define SP_W 199
@@ -2200,15 +2348,14 @@ static void steps_pages(uint32_t pat)           /* (a pattern longer than 16 ste
 }
 static void draw_top(void)                      /* the 4 knobs, then the bank's dots */
 {
-    const bank_t *bk = bank_now();
     uint32_t k, pat = cur_pat(), nb = VIEWS[ui.view].n, touched_on = fm1_ms < ui.touch_until;
     if (list_full()) return;                    /* (draw_set / draw_lib have it) */
     cv_begin(240, TOP_H, B_BG);                 /* (down to the middle band: clears what SETTINGS left there) */
     if (list_view()) { cv_blit(0, 0); return; }   /* (its question or help card: no knobs above) */
     for (k = 0; k < 4u; k++) {
-        const pref_t *r = &bk->k[k];
+        const pref_t *r = knob_pref(k);
         int32_t x = 2 + (int32_t)k * 60;
-        uint16_t bg = touched_on && ui.touched == (int8_t)k ? B_ACT : B_BOX;
+        uint16_t bg = touched_on && ui.touched == (int8_t)k && knob_touched(r) ? B_ACT : B_BOX;
         char s[16];
         box(x, 2, 58, 64, bg);
         if (r->kind == R_NONE) continue;
@@ -2216,8 +2363,7 @@ static void draw_top(void)                      /* the 4 knobs, then the bank's 
         pref_text(s, r);
         if (text_w(&FONT_V, s) > 53) tx(x + 4, 28, &FONT_V20, s, B_TXT, bg);   /* (too wide for 30 px: 20, low) */
         else tx(x + 4, 20, &FONT_V, s, B_TXT, bg);
-        cv_rect(x + 4, 58, 50, 3, B_TRACK);
-        cv_rect(x + 4, 58, (int32_t)(pref_bar(r) * 50u / 127u) < 2 ? 2 : (int32_t)(pref_bar(r) * 50u / 127u), 3, bar_col(r));
+        bar_draw(x + 4, 58, 50, 3, 2, r);
         if ((r->kind == R_PARAM || r->kind == R_LEVEL) && knob_ch(r) < DRUM_NCH) {   /* the marks: lock, LFO, motion */
             uint32_t ch = knob_ch(r), prm = pref_param(r);
             if (ui.held >= 0 && ui.view == V_SOUND && mot_get(pat, ch, prm, (uint32_t)ui.held) != MOT_NONE) cv_rect(x + 49, 6, 4, 4, B_LOCK);
@@ -2232,7 +2378,6 @@ static void draw_top(void)                      /* the 4 knobs, then the bank's 
 }
 static uint32_t top_hash(void)
 {
-    const bank_t *bk = bank_now();
     uint32_t h = hsh(ui.view * 16u + ui.bank[ui.view], set.ch), k, pat = cur_pat();
     h = hsh(h, fm1_ms < ui.touch_until ? (uint32_t)ui.touched + 1u : 0u);
     h = hsh(h, (uint32_t)ui.held + 1u);
@@ -2241,7 +2386,7 @@ static uint32_t top_hash(void)
     if (ui.view == V_STEPS)                     /* (which 16 steps: steps_pages) */
         h = hsh(hsh(h, pat_len(pat) * 64u + ui.spage), seq.run ? seq.step / 16u + 1u : 0u);
     for (k = 0; k < 4u; k++) {
-        const pref_t *r = &bk->k[k];
+        const pref_t *r = knob_pref(k);
         h = hsh(h, (uint32_t)pref_get(r) + (uint32_t)r->kind * 1000u);
         if ((r->kind == R_PARAM || r->kind == R_LEVEL) && knob_ch(r) < DRUM_NCH)
             h = hsh(h, (uint32_t)(lfo_find(pat, knob_ch(r), pref_param(r)) + 2) * 3u + mot_has_motion(pat, knob_ch(r), pref_param(r)));
@@ -2556,7 +2701,11 @@ static uint32_t mid_hash(uint32_t meters)      /* meters: the hits' meters too (
         for (k = 0; chain_making() && k < ui.chain_n; k++) h = hsh(h, ui.chain[k]);
         if (meters) for (c = 0; c < DRUM_NCH; c++) h = hsh(h, meter(c) / 6u);
         break;
-    case V_SET: h = hsh(h, ui.row * 16u + set.ext * 4u + set.rec_free * 2u); h = hsh(h, ui.cpu * 4u + cpu_cores()); break;
+    case V_SET: h = hsh(h, ui.row * 16u + set.ext * 4u + set.rec_free * 2u); h = hsh(h, ui.cpu * 4u + cpu_cores());
+#if PERF_TEST
+        h = hsh(h, pf_on * 4u + pf_page * 2u + fx_late_sw); if (pf_on) h = hsh(h, pf_seq);
+#endif
+        break;
     case V_SONG: {                              /* the song shown, its element chosen, its slots, the patterns' steps */
         const arr_t *a = &arr[ui.song % ARR_NSONG];
         h = hsh(h, ui.song * 256u + ui.el); h = hsh(h, a->n * 4u + a->end); h = hsh(h, a->bpm ? a->bpm : seq.bpm);
@@ -2581,11 +2730,8 @@ static uint32_t mid_hash(uint32_t meters)      /* meters: the hits' meters too (
             const seq_track_t *t = &seq_song.p[pat].t[c];
             h = hsh(hsh(hsh(hsh(h, t->hit[0]), t->hit[1]), t->acc[0]), t->acc[1]);
         }
-        for (k = 0; k < NLANE; k++) if (lanes[k].used && lanes[k].pat == pat) {
-            h = hsh(h, k * 7u + lanes[k].ch);
-            if (lanes[k].param == P_RATCH || lanes[k].param == P_MICRO)   /* (its marks; the cells moved) */
-                for (c = 0; c < SEQ_NSTEP; c++) h = hsh(h, lanes[k].val[c]);
-        }
+        for (k = 0; k < NLANE; k++) if (lanes[k].used && lanes[k].pat == pat) h = hsh(h, k * 7u + lanes[k].ch);
+        h = hsh(h, mark_hash(pat, DRUM_NCH));   /* (the steps' marks; the cells moved) */
         for (c = 0; c < DRUM_NCH; c++) h = hsh(h, mot_quant[pat][c]);
         break;
     case V_LFO: for (k = 0; k < NLFO; k++) { const lfo_t *l = &lfos[pat][k]; h = hsh(hsh(h, l->ch), l->used | l->param << 4 | l->rate << 10 | l->shape << 14 | l->sync << 16 | (uint32_t)(uint8_t)l->depth << 20); } h = hsh(h, ui.lfo_sel); break;

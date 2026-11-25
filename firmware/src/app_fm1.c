@@ -293,32 +293,51 @@ static int lib_write(void)                      /* into the slot not holding the
     return rc;
 }
 
-/* ---- the patterns, their lanes and LFOs: one record over blobs 1..5 */
+/* ---- the patterns, their lanes, LFOs, QUANT and marks: one record over blobs 1..5. SNG7 (song_pack): the magic,
+ * seq_song, the lanes in use (a count, then each lane_t; the RAMPs' among them, P_RAMP), the LFOs, QUANT (mot_quant as
+ * it is), the marks (a count, then each word, motion.c, in order of pattern, channel, step). SNG6, SNG5 and SNG4 still
+ * load, the same but for their marks' words, whose RAMP moves into its lane (ramp_from6: DOWN -50 %, UP +50 %, DOWN+
+ * -100 %, UP+ +100 %; mark_from5: three RAMPs; mark_from4: hits 1..4, no RAMP); SNG3, SNG2 and SNG1 too: their P_COND,
+ * P_MICRO and P_RATCH lanes become marks, their SONG_QUANT lanes QUANT. An older build than SNG7's does not load an
+ * SNG7 record (an SNG6 build would read a P_RAMP lane as marks) */
 #include "motion.c"
 #include "lfo.c"
-#define SONG_FMT 0x33474E53u                    /* "SNG3": each part its own length */
+#define SONG_FMT 0x37474E53u                    /* "SNG7": RAMP a lane, -100..+100 % (2026-11-24) */
+#define SONG_FMT6 0x36474E53u                   /* "SNG6": RAMP's five in the marks, DOWN+ and UP+ (2026-11-24) */
+#define SONG_FMT5 0x35474E53u                   /* "SNG5": the marks with ratchets of 1..8 hits and RAMP (2026-11-23) */
+#define SONG_FMT4 0x34474E53u                   /* "SNG4": the marks and QUANT apart from the lanes (2026-11-23) */
+#define SONG_FMT3 0x33474E53u                   /* "SNG3": each part its own length; the marks and QUANT as lanes */
 #define SONG_FMT2 0x32474E53u                   /* "SNG2": 10 channels, one length */
 #define SONG_FMT1 0x31474E53u                   /* "SNG1": 8, before MT and HT (RS and CY were 7 and 8) */
 typedef struct { seq_track_t t[8]; uint8_t len, rate, swing, rsv; } seq_pat8_t;
 typedef struct { seq_track_t t[DRUM_NCH]; uint8_t len, rate, swing, rsv; } seq_pat2_t;
 #define SONG_BLOB 1u
 #define SONG_NBLOB 5u
-#define SONG_MAX (4u + sizeof(seq_song_t) + 4u + NLANE * sizeof(lane_t) + sizeof lfos)
+#define SONG_QUANT 0xF0u                        /* an SNG3 record's lane that holds QUANT, never a live one: QUANT_PER
+                                                 * patterns from its pat, DRUM_NCH values each (an older build skips it:
+                                                 * its param is past P_NTARGET) */
+#define QUANT_PER (64u / DRUM_NCH)              /* (6 patterns a lane, 6 lanes for 32) */
+#define SONG_NREC 177u                          /* an SNG3 record's lanes at most: 176 for the motion, one for QUANT */
+#define SONG3_MAX (4u + sizeof(seq_song_t) + 4u + SONG_NREC * sizeof(lane_t) + sizeof lfos)
+#define SONG5_MAX (4u + sizeof(seq_song_t) + 4u + NLANE * sizeof(lane_t) + sizeof lfos + sizeof mot_quant + 4u + \
+                   NMARK * 4u)                 /* (SNG6's, SNG5's and SNG4's the same) */
+#define SONG_MAX (SONG3_MAX > SONG5_MAX ? SONG3_MAX : SONG5_MAX)   /* (io_buf: an old record still loads) */
 static union { uint8_t song[SONG_MAX]; snd_hi_t hi; uint64_t align; } io_buf;   /* a save's bytes, a load's, HOME + REC's: the patterns' (song_io),
                                                  * or kits 9..16's (snd_save, snd_load_hi: never at once). In the RAM, not
                                                  * the pool: the reverb's memory */
 #define song_io io_buf.song
 static snd_hi_t *snd_hi_io(void) { return &io_buf.hi; }
 static uint8_t *io_scratch(void) { return io_buf.song; }   /* (8-byte aligned: lib_blob_t's uint64_t) */
-_Static_assert(sizeof io_buf >= NLANE * sizeof(lane_t), "mot_copy's lanes do not fit io_buf");
+_Static_assert(sizeof io_buf >= NLANE * sizeof(lane_t) + DRUM_NCH * SEQ_NSTEP * 4u,
+               "mot_copy's lanes and marks do not fit io_buf");
 _Static_assert(sizeof io_buf >= (sizeof(snd2_blob_t) + 7u) / 8u * 8u + sizeof(drum_kit8_t), "snd_load's old formats do not fit io_buf");
 _Static_assert(sizeof io_buf >= sizeof(lib_blob_t), "lib_load's other copy does not fit io_buf");
 
 _Static_assert(SONG_MAX <= SONG_NBLOB * 0x1000u - 12u, "the patterns' record is bigger than its blobs");
 
-static uint32_t song_pack(uint8_t *b)
+static uint32_t song_pack(uint8_t *b)           /* SNG7 (above) */
 {
-    uint32_t n = 0, i, cnt = 0, f = SONG_FMT;
+    uint32_t n = 0, i, cnt = 0, f = SONG_FMT, at, w;
     memcpy(b, &f, 4); n = 4;
     memcpy(b + n, &seq_song, sizeof seq_song); n += sizeof seq_song;
     n += 4;
@@ -326,9 +345,30 @@ static uint32_t song_pack(uint8_t *b)
         if (lanes[i].used) { memcpy(b + n, &lanes[i], sizeof(lane_t)); n += sizeof(lane_t); cnt++; }
     memcpy(b + 4u + sizeof seq_song, &cnt, 4);
     memcpy(b + n, lfos, sizeof lfos); n += sizeof lfos;
+    memcpy(b + n, mot_quant, sizeof mot_quant); n += sizeof mot_quant;   /* (QUANT saved as it is, the user's choice
+                                                 * 2026-11-23: until then SAVE wrote it into the micro timing) */
+    at = n; n += 4; cnt = 0;
+    for (i = 0; i < SEQ_NPAT * DRUM_NCH * SEQ_NSTEP && cnt < NMARK; i++) {   /* (in order: the same marks, the same
+                                                 * bytes) */
+        uint32_t p = i / (DRUM_NCH * SEQ_NSTEP), c = i / SEQ_NSTEP % DRUM_NCH, s = i % SEQ_NSTEP;
+        if ((w = mark_get(p, c, s)) == MARK_NONE) continue;
+        w |= mark_key(p, c, s);
+        memcpy(b + n, &w, 4); n += 4; cnt++;
+    }
+    memcpy(b + at, &cnt, 4);
     return n;
 }
 static uint32_t ch_from8(uint32_t c) { return c < 6u ? c : c + 2u; }   /* a channel saved before MT and HT */
+static uint32_t mark_from4(uint32_t w)          /* an SNG4 record's mark as SNG6's (motion.c; no RAMP, as SNG7's); 0:
+                                                 * not one. SNG4's
+                                                 * word: bits 0-15 0x8000 | its key, 16-23 its condition (MOT_NONE
+                                                 * none), 24-29 micro timing + 23, 30-31 its hits - 1 */
+{
+    uint32_t m = w >> 24 & 63u;
+    if (!(w & 0x8000u)) return 0;
+    return mark_mr((w & MARK_KEY) | (uint32_t)(cond_val_pos(w >> 16 & 0xFFu) + (int32_t)MARK_C0) << 15,
+                   m > 2u * MICRO_MAX ? 2u * MICRO_MAX : m, mark_rcode((w >> 30) + 1u, 0u));
+}
 static void pat_unpack(seq_pat_t *d, const uint8_t *b, uint32_t i, uint32_t old, uint32_t v2)   /* pattern i of a record's */
 {
     seq_pat8_t o;
@@ -347,21 +387,31 @@ static void pat_fit_len(uint32_t pat)           /* a pattern ends with its longe
     for (c = 0; c < DRUM_NCH; c++) if (q->tlen[c] > m) m = q->tlen[c];
     q->len = (uint8_t)m;
 }
-/* a record's pattern p (p SEQ_NPAT: all of them) into the live ones; 0 done, -1 not a record, -2 motion full.
- * A record of 8 channels (SNG1) is read as 10: its channels 7 and 8 (RS, CY), their lanes and LFOs, become 9 and 10 */
+/* a record's pattern p (p SEQ_NPAT: all of them) into the live ones; 0 done, -1 not a record, -2 motion full (what
+ * fit loaded). A record of 8 channels (SNG1) is read as 10: its channels 7 and 8 (RS, CY), their lanes and LFOs,
+ * become 9 and 10 */
 static int song_unpack(const uint8_t *b, uint32_t n, uint32_t p)
 {
-    uint32_t cnt, i, k0, at, f = (uint32_t)(b[0] | b[1] << 8 | b[2] << 16 | (uint32_t)b[3] << 24), old = f == SONG_FMT1, v2 = f == SONG_FMT2;
+    uint32_t cnt, i, k0, at, nm = 0, f = (uint32_t)(b[0] | b[1] << 8 | b[2] << 16 | (uint32_t)b[3] << 24);
+    uint32_t old = f == SONG_FMT1, v2 = f == SONG_FMT2, v4 = f == SONG_FMT || f == SONG_FMT6 || f == SONG_FMT5 ||
+                                                 f == SONG_FMT4;   /* (v4: the marks apart, SNG4 .. SNG7) */
     uint32_t ss = SEQ_NPAT * (old ? sizeof(seq_pat8_t) : v2 ? sizeof(seq_pat2_t) : sizeof(seq_pat_t));
     int rc = 0;
-    if (n < 8u + ss || (f != SONG_FMT && !old && !v2)) return -1;
+    if (n < 8u + ss || (!v4 && f != SONG_FMT3 && !old && !v2)) return -1;
     memcpy(&cnt, b + 4u + ss, 4);
     at = 8u + ss;
-    if (cnt > NLANE || n != at + cnt * sizeof(lane_t) + sizeof lfos) return -1;
+    if (cnt > SONG_NREC) return -1;
+    if (v4) {                                   /* (the marks' count after the lanes, the LFOs and QUANT) */
+        uint32_t q = at + cnt * sizeof(lane_t) + sizeof lfos + sizeof mot_quant;
+        if (n < q + 4u) return -1;
+        memcpy(&nm, b + q, 4);
+        if (nm > MARK_NSLOT || n != q + 4u + nm * 4u) return -1;
+    } else if (n != at + cnt * sizeof(lane_t) + sizeof lfos) return -1;
     if (p >= SEQ_NPAT) {
         for (i = 0; i < SEQ_NPAT; i++) pat_unpack(&seq_song.p[i], b + 4, i, old, v2);
         memset(lanes, 0, sizeof lanes);
-        memset(mot_quant, 0, sizeof mot_quant);   /* (as saved: QUANT is never saved, SAVE puts it into the lanes) */
+        mark_reset();
+        memset(mot_quant, 0, sizeof mot_quant);   /* (QUANT as saved: below; an SNG3 without SONG_QUANT's lanes, 0) */
     } else {
         pat_unpack(&seq_song.p[p], b + 4, p, old, v2);
         mot_clear(p, DRUM_NCH);
@@ -370,15 +420,54 @@ static int song_unpack(const uint8_t *b, uint32_t n, uint32_t p)
     for (i = 0; i < cnt; i++) {
         lane_t l;
         int32_t k;
+        uint32_t i0;
         memcpy(&l, b + at + i * sizeof(lane_t), sizeof l);
         if (old && l.ch < 8u) l.ch = (uint8_t)ch_from8(l.ch);
+        if (l.param == SONG_QUANT) {            /* QUANT of QUANT_PER patterns from l.pat */
+            uint32_t k, c;
+            for (k = 0; k < QUANT_PER && l.pat + k < SEQ_NPAT; k++)
+                if (p >= SEQ_NPAT || l.pat + k == p)
+                    for (c = 0; c < DRUM_NCH; c++) mot_quant[l.pat + k][c] = l.val[k * DRUM_NCH + c] > 100u ? 100u : l.val[k * DRUM_NCH + c];
+            continue;
+        }
         if (l.pat >= SEQ_NPAT || l.ch >= DRUM_NCH || l.param >= P_NTARGET || (p < SEQ_NPAT && l.pat != p)) continue;
-        if ((k = mot_alloc(l.pat, l.ch, l.param)) < 0) { rc = -2; break; }
+        if (l.param >= P_COND && l.param != P_RAMP) {   /* conditions, micro timing, ratchets (SNG3 and before):
+                                                 * marks; micro timing below 16, a first build's (mark_with: micro_of) */
+            for (k = 0; k < (int32_t)SEQ_NSTEP; k++)
+                if (l.val[k] != MOT_NONE && mot_set(l.pat, l.ch, l.param, (uint32_t)k, l.val[k])) rc = -2;
+            continue;
+        }
+        if ((k = mot_alloc(l.pat, l.ch, l.param)) < 0) { rc = -2; continue; }   /* (the others still: marks,
+                                                 * QUANT) */
         memcpy(lanes[k].val, l.val, sizeof l.val);
+        if (l.param == P_RAMP)                  /* (each within -100..+100; a RAMP alone, no ratchet: kept, unheard) */
+            for (i0 = 0; i0 < SEQ_NSTEP; i0++)
+                if (lanes[k].val[i0] > 2u * RAMP_MAX) lanes[k].val[i0] = MOT_NONE;
     }
     at += cnt * sizeof(lane_t);
     if (p >= SEQ_NPAT) memcpy(lfos, b + at, sizeof lfos);
     else memcpy(lfos[p], b + at + p * sizeof lfos[0], sizeof lfos[0]);
+    if (v4) {
+        const uint8_t *q = b + at + sizeof lfos;
+        uint32_t c, w, r6;
+        for (i = 0; i < SEQ_NPAT; i++)
+            if (p >= SEQ_NPAT || i == p)
+                for (c = 0; c < DRUM_NCH; c++) mot_quant[i][c] = q[i * DRUM_NCH + c] > 100u ? 100u :
+                                                                  q[i * DRUM_NCH + c];
+        q += sizeof mot_quant + 4u;
+        for (i = 0; i < nm; i++) {
+            memcpy(&w, q + i * 4u, 4);
+            if (f == SONG_FMT4) w = mark_from4(w);
+            else if (f == SONG_FMT5) w = mark_from5(w);
+            if (!w || mark_pat(w) >= SEQ_NPAT || mark_ch(w) >= DRUM_NCH) continue;
+            if (p < SEQ_NPAT && mark_pat(w) != p) continue;
+            w = mark_fit(w);                    /* (each field in range) */
+            r6 = mark_ramp6(w);                 /* (SNG6 and before: its RAMP into its lane; SNG7: none, 0) */
+            w = mark_noramp(w);
+            if (mark_put(w & MARK_KEY, w)) { rc = -2; continue; }
+            if (r6 && mot_set(mark_pat(w), mark_ch(w), P_RAMP, mark_st(w), ramp_val(ramp_from6(r6)))) rc = -2;
+        }
+    }
     if (old)
         for (i = 0; i < SEQ_NPAT; i++)
             if (p >= SEQ_NPAT || i == p)
@@ -407,6 +496,7 @@ static void song_empty(void)
     uint32_t p;
     memset(&seq_song, 0, sizeof seq_song);
     memset(lanes, 0, sizeof lanes);
+    mark_reset();
     memset(lfos, 0, sizeof lfos);
     for (p = 0; p < SEQ_NPAT; p++) { seq_song.p[p].len = 16; memset(seq_song.p[p].tlen, 16, DRUM_NCH); seq_song.p[p].swing = 50; }
 }
@@ -425,12 +515,15 @@ static void demo_song(void)                     /* patterns 1 and 2: a groove to
             seq_set(1, c, s, B[c][s] == 'X' ? STEP_ACC : B[c][s] == 'x' ? STEP_ON : STEP_OFF);
         }
 }
+static uint8_t song_lost;                       /* the patterns loaded at start without all their lanes or marks
+                                                 * (song_unpack -2): ui_fm1.c says MOTION FULL as the opening closes */
 static void song_load(void)
 {
     static uint8_t old[8][8][16];               /* Drumtonic 0.0: blob 1, 8 patterns x 8 channels x 16 steps */
     uint32_t n = (uint32_t)song_read(), p, c, s;
     song_empty();
-    if (n && !song_unpack(song_io, n, SEQ_NPAT)) return;
+    int rc = n ? song_unpack(song_io, n, SEQ_NPAT) : -1;
+    if (rc != -1) { song_lost = rc == -2; return; }   /* (-2, motion full: what fit) */
     if (n) song_empty();
     if (!blob_load(1, old, sizeof old)) {
         for (p = 0; p < 8u; p++)
@@ -501,6 +594,8 @@ static const uint8_t LENS[12] = {1, 2, 3, 4, 5, 6, 8, 12, 16, 24, 32, 64};
 static struct { uint8_t on, pat, ch, len; uint32_t hash; seq_pat_t p; } orig;
 static lane_t orig_lanes[24] POOL;
 static uint8_t orig_n;
+static uint32_t orig_marks[DRUM_NCH * SEQ_NSTEP];   /* (its marks: all of a pattern's fit; not the pool, it is full) */
+static uint32_t orig_nmark;
 static uint32_t part_hash(uint32_t pat, uint32_t ch)
 {
     const seq_pat_t *q = &seq_song.p[pat];
@@ -513,7 +608,7 @@ static uint32_t part_hash(uint32_t pat, uint32_t ch)
     }
     MOT_EACH(i, pat, ch)
         for (k = 0; k < sizeof lanes[i].val; k++) h = (h ^ lanes[i].val[k]) * 16777619u;
-    return h;
+    return (h ^ mark_hash(pat, ch)) * 16777619u;
 }
 static uint32_t orig_len(uint32_t pat, uint32_t ch)   /* the length PRESETS started from, 0: none kept */
 {
@@ -531,6 +626,7 @@ static void part_set_len(uint32_t pat, uint32_t ch, int32_t d)   /* one step alo
         orig.on = 1; orig.pat = (uint8_t)pat; orig.ch = (uint8_t)ch; orig.len = (uint8_t)cur; orig.p = *q; orig_n = 0;
         MOT_EACH(k, pat, ch)
             if (orig_n < 24u) orig_lanes[orig_n++] = lanes[k];
+        orig_nmark = mark_take(pat, ch, orig_marks);
         orig.on = orig_n < 24u || mot_count() == 0;
     }
     if (orig.on && orig.pat == pat && orig.ch == ch && to == orig.len) {   /* back to where it started: exactly as it was */
@@ -541,13 +637,14 @@ static void part_set_len(uint32_t pat, uint32_t ch, int32_t d)   /* one step alo
             int32_t j = mot_alloc(pat, orig_lanes[k].ch, orig_lanes[k].param);
             if (j >= 0) memcpy(lanes[j].val, orig_lanes[k].val, sizeof lanes[j].val);
         }
+        for (k = 0; k < orig_nmark; k++) mark_put(orig_marks[k] & MARK_KEY, orig_marks[k]);
     } else {
         for (c = 0; c < DRUM_NCH; c++) {
             uint32_t src = orig.on && orig.pat == pat && orig.ch == ch ? orig.p.tlen[c] : q->tlen[c];
             if (ch < DRUM_NCH && c != ch) continue;
             if (to > src) {                     /* longer: what the turn started from, again and again */
                 for (s = src; s < to; s++) seq_set(pat, c, s, seq_get(pat, c, s % src));
-                mot_repeat(pat, c, src, to);
+                if (mot_repeat(pat, c, src, to) < 0) say("MOTION FULL");   /* (some marks not repeated: as any edit) */
             }
             q->tlen[c] = (uint8_t)to;
         }
@@ -604,7 +701,6 @@ static int save_all(void)                       /* SAVE: the sound and the kits 
     memcpy(kits[kit_cur].x, kitx, SND_NX);
     kits_used |= (uint16_t)(1u << kit_cur);
     kw_on = 0;
-    mot_quant_apply();                          /* (QUANT into the micro timing: what is heard is what is saved) */
     if (snd_save() || song_save()) { kw_on = on; return -1; }   /* (not written: the edits still SAVE's to do) */
     if (memcmp(set_saved, &set, sizeof set) || arr_dirty) {   /* (the settings and the songs: one record) */
         if (sets_save()) return -1;
@@ -693,7 +789,9 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("len")) *got = (int)pat_len(A(0));
     else if (IS("br")) *got = ui.br_k + 1 + seq_br_on * (16 + seq_br_loop * 32) + ui.br_mode * 64;   /* beat repeat: its length + 1 (0 off), ISR on, looping */
     else if (IS("nr")) *got = ui.nr_on * 16 + ui.nr_rate;   /* note repeat: on * 16 + its rate (0 1/4 .. 7 1/32T) */
-    else if (IS("ratch")) *got = (int)ratch_of(mot_get(A(0), A(1), P_RATCH, A(2)));   /* pattern channel step: its hits, 1..4 */
+    else if (IS("ratch")) *got = (int)ratch_of(mot_get(A(0), A(1), P_RATCH, A(2)));   /* pattern channel step: 1..8 */
+    else if (IS("ramp")) *got = (int)ramp_of(mot_get(A(0), A(1), P_RAMP, A(2)));   /* pattern channel step: RAMP
+                                                 * -100..+100 */
     else if (IS("blackled")) *got = (int)(led_on >> KEY_LED(BLACK[A(0) % 11u]) & 1u) * 2 + (int)(led_glow >> KEY_LED(BLACK[A(0) % 11u]) & 1u);
     else if (IS("whiteled")) *got = (int)(led_on >> KEY_LED(WHITE[A(0) % 16u]) & 1u) * 2 + (int)(led_glow >> KEY_LED(WHITE[A(0) % 16u]) & 1u);
     else if (IS("tlen")) *got = (int)track_len(A(0), A(1));
@@ -735,13 +833,19 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("ask")) *got = ui.ask;
     else if (IS("bkstate")) *got = bk_st;                             /* a restore (backup.c BS_*) */
     else if (IS("held")) *got = ui.held;
+    else if (IS("knob")) *got = knob_pref(A(0))->kind;                 /* knob 0..3: what it is (ui_fm1.c R_*: REPEAT
+                                                 * 9, QUANT 10, RATCH 11, RAMP 12) */
+    else if (IS("msg4")) *got = fm1_ms < msg_until ? msg[0] << 24 | msg[1] << 16 | msg[2] << 8 | msg[3] : 0;   /* the
+                                                 * band's message: its first 4 letters, 0 none */
     else if (IS("librow")) *got = ui.lib_row;
     else if (IS("libused")) *got = (int)(lib_user.used >> A(0) % LIB_USER & 1u);   /* user row n (0..63) */
     else if (IS("preview")) *got = mot_prev ? (int)mot_prev_ch : -1;
     else if (IS("name")) *got = kit.ch[A(0) % DRUM_NCH][0] << 8 | kit.ch[A(0) % DRUM_NCH][1];   /* a channel's name: its 2 first letters */
     else if (IS("open")) *got = ui.splash != 0;                         /* the opening on screen */
     else if (IS("lane")) { uint32_t v = mot_get(A(0), A(1), A(2), A(3)); *got = v == MOT_NONE ? -1 : (int)v; }   /* pat ch param step */
-    else if (IS("lanes")) *got = (int)mot_count();
+    else if (IS("lanes")) *got = (int)mot_count();                     /* the lanes in use (knobs, p-locks) */
+    else if (IS("marks")) *got = (int)mark_n;                           /* the marks in use (conditions, micro timing,
+                                                                         * ratchets) */
     else if (IS("lfo")) *got = lfos[A(0) % SEQ_NPAT][A(1) % NLFO].used ? lfos[A(0) % SEQ_NPAT][A(1) % NLFO].param : -1;
     else if (IS("lfooff")) *got = mot_lfo_off[A(0) % DRUM_NCH][A(1) % P_COND];
     else if (IS("param")) *got = (int)mot_base(A(0) % DRUM_NCH, A(1));  /* the knob's value: channel param */
@@ -751,6 +855,7 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("guide")) *got = guide_btn();                            /* the button whose guide shows, -1 none */
     else if (IS("bot")) *got = bot_drop * 2 + bot_ok;                     /* the band's right side: fields left out * 2 + fits beside the left */
     else if (IS("big")) *got = fm1_ms < ui.big_until;                     /* the big bubble (GLO, HOME, undo) */
+    else if (IS("full")) *got = fm1_ms < ui.big_until && !strcmp(ui.big_l2, "FULL");   /* the big bubble: MOTION FULL */
     else if (IS("kitused")) *got = kits_used;
     else if (IS("kitcur")) *got = kit_cur;
     else if (IS("kitswaps")) *got = kit_swaps;                          /* kits the ISR took as a pattern started */
@@ -762,6 +867,15 @@ static int host_probe(const char *name, const int *a, int n, int *got)   /* test
     else if (IS("chhits")) *got = (int)seq_hits[A(0) % DRUM_NCH];   /* channel: hits out of the sequencer since power on (its
                                                                      * steps, ratchets, note repeat, beat repeat) */
     else if (IS("hitms")) *got = (int)seq_hit_ms[A(0) % DRUM_NCH];   /* channel: when its last hit was made, ms */
+    else if (IS("hitfrac")) *got = seq_hit_frac[A(0) % DRUM_NCH];   /* channel: where in its step (frac, 0..255)
+                                                 * its last hit came (one on a step's start: the step before's end) */
+    else if (IS("hitvel")) {                                            /* channel: the velocity its newest hit sent
+                                                 * on MIDI (seq_ev), -1 none */
+        uint32_t i, e;
+        *got = -1;
+        for (i = 1; i <= 32u && i <= seq_ev_w; i++)
+            if (((e = seq_ev[(seq_ev_w - i) % 32u]) >> 8) == A(0) % DRUM_NCH) { *got = (int)(e & 0xFFu); break; }
+    }
     else if (IS("micro")) *got = (int)mot_micro(A(0), A(1), A(2));      /* pattern channel step: 24ths, + late */
     else if (IS("quant")) *got = mot_quant[A(0) % SEQ_NPAT][A(1) % DRUM_NCH];   /* pattern channel: QUANT % */
     else if (IS("recfree")) *got = set.rec_free;                        /* SETTINGS > REC: 1 FREE */

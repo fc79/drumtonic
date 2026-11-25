@@ -60,11 +60,13 @@ enum { BK_INFO = 0x60, BK_READ = 0x61, BK_DONE = 0x62, BK_BEGIN = 0x63, BK_STATE
 enum { BK_OK, BK_NO_ID, BK_RANGE, BK_FLASH, BK_BAD, BK_BUSY, BK_NOT_NOW, BK_MISMATCH };
 enum { BS_IDLE, BS_ASK, BS_YES, BS_NO, BS_FAIL, BS_DONE };
 
-static const struct { char name[4]; uint8_t kind, i, k; uint32_t fmt[3]; } BK_REC[] = {   /* id = the row; fmt: what its
-                                                 * loader takes (0: any) */
+#define BK_NFMT 7u                              /* (the formats a record's loader takes, at most) */
+static const struct { char name[4]; uint8_t kind, i, k; uint32_t fmt[BK_NFMT]; } BK_REC[] = {   /* id = the row;
+                                                 * fmt: what its loader takes (0: any) */
     {{'S', 'E', 'T', 'S'}, STORE_SET, 0, 1, {0}},                       /* the settings */
     {{'K', 'I', 'T', '1'}, STORE_BLOB, 0, 1, {SND_FMT, SND_FMT2}},      /* the sound playing and kits 1-8 (snd_save) */
-    {{'S', 'O', 'N', 'G'}, STORE_BLOBS, SONG_BLOB, SONG_NBLOB, {SONG_FMT, SONG_FMT2, SONG_FMT1}},   /* patterns, lanes, LFOs */
+    {{'S', 'O', 'N', 'G'}, STORE_BLOBS, SONG_BLOB, SONG_NBLOB, {SONG_FMT, SONG_FMT6, SONG_FMT5, SONG_FMT4, SONG_FMT3, SONG_FMT2, SONG_FMT1}},
+                                                /* patterns, lanes, LFOs, QUANT, marks (SNG7; SNG6..1 load too) */
     {{'L', 'I', 'B', '0'}, STORE_SLOT, LIB_SLOT, 1, {LIB_FMT}},         /* the library: two copies, the newer one loads */
     {{'L', 'I', 'B', '1'}, STORE_SLOT, LIB_SLOT + 1u, 1, {LIB_FMT}},
     {{'K', 'I', 'T', '2'}, STORE_SLOT, SND_HI_SLOT, 1, {SND_FMT_HI}},  /* kits 9-16 */
@@ -174,7 +176,7 @@ static uint32_t bk_begin(const uint8_t *m, uint32_t len, uint8_t *bad)
         uint32_t n = bk_rd32(e + 4), f = bk_rd32(e + 12), ok = !BK_REC[r].fmt[0];
         *bad = (uint8_t)r;
         if (e[0] != r || (n && (n < 12u || n > bk_cap(r) || n - 12u > sizeof io_buf))) return BK_BAD;
-        for (j = 0; j < 3u; j++) ok |= BK_REC[r].fmt[j] && f == BK_REC[r].fmt[j];
+        for (j = 0; j < BK_NFMT; j++) ok |= BK_REC[r].fmt[j] && f == BK_REC[r].fmt[j];
         if (n >= 16u && !ok) return BK_BAD;
         if (n && n < 16u && BK_REC[r].fmt[0]) return BK_BAD;
         bk_mlen[r] = n; bk_mcrc[r] = bk_rd32(e + 8); bk_mfmt[r] = f;

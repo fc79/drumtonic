@@ -1,7 +1,7 @@
 # Drumtonic on the FM-1: writing a song on the SONG page (song mode, step 6, 2026-11-17). The pattern keys write the
 # element chosen without launching it: a tap, that pattern; a key held and others tapped, that chain (as the first is
 # let go); on END, a new element x1, and END stays chosen (the user's choice). ALGORITHM: the element's times, on END
-# LOOP / STOP. Knob 1: the song's tempo (the one playing as it got its first element). GLO held copies the element,
+# LOOP / STOP. Knob 1: the song's tempo (the one playing as it got its first element). GLO let go copies the element,
 # GLO + SEL inserts the copy, GLO + REC deletes the element; on END, the whole song after CLEAR SONG 1? (HOME no, SEL
 # yes: the user's choice). OCT+: patterns 17-32. 64 patterns a song: SONG FULL, a chain cut there. Not in undo.
 # Probes: songel (the element chosen; elements + 1: END), songels N, sn (slots), spat N (slot N's pattern, 1..),
@@ -58,7 +58,7 @@
 810 expect 125 sbpm
 810 expect 120 bpm
 900 shot
-# GLO held on element 1: copied; on element 2, GLO + SEL inserts it there
+# GLO held and let go on element 1: copied; on element 2, GLO + SEL inserts it there
 1000 enc 0 -2
 1010 expect 1 songel
 1100 btndown 7
